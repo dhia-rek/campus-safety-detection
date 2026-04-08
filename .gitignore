@@ -1,0 +1,38 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# Environment secrets
+.env
+*.env.local
+
+# Runtime generated data (re-creatable by running the pipeline)
+runtime_data/
+
+# Dataset (large binary files — store separately)
+Videos_bullying/
+Videos_bullying /
+
+# Model weights (large binary — download via ultralytics)
+yolov8m.pt
+*.pt
+
+# Subscriber data (personal Telegram IDs)
+subscribers.json
+
+# macOS
+.DS_Store
+
+# IDE
+.idea/
+.vscode/
+*.swp

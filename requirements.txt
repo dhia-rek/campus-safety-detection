@@ -1,0 +1,16 @@
+numpy
+pandas
+scipy
+opencv-python
+matplotlib
+tqdm
+Pillow
+requests
+streamlit
+torch
+torchvision
+ultralytics
+openai-clip
+panns_inference
+librosa
+scikit-learn
