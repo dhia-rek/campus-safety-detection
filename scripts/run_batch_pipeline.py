@@ -28,6 +28,7 @@ PYTHON       = str(PROJECT_ROOT / ".venv" / "bin" / "python")
 # Resolve dataset root the same way src/paths.py does
 def _dataset_root() -> Path:
     for candidate in [
+        PROJECT_ROOT / "shanghaitech",                     # in-project dataset (default)
         PROJECT_ROOT / "Videos_bullying" / "ece_campus",
         PROJECT_ROOT / "Videos_bullying " / "ece_campus",
     ]:

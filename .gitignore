@@ -36,3 +36,13 @@ subscribers.json
 .idea/
 .vscode/
 *.swp
+
+# Azurite emulator artifacts (stray)
+AzuriteConfig
+__azurite_db_table__.json
+
+# ShanghaiTech dataset (large, in-project)
+shanghaitech/
+
+# Presentation / docs (kept local, not pushed)
+docs/

@@ -33,6 +33,7 @@ def _env_path(name: str, default: Path) -> Path:
 def _default_dataset_root() -> Path:
     """Locate the ECE campus dataset folder, trying both common spellings."""
     candidates = [
+        PROJECT_ROOT / "shanghaitech",                     # in-project dataset (default)
         PROJECT_ROOT / "Videos_bullying" / "ece_campus",
         PROJECT_ROOT / "Videos_bullying " / "ece_campus",  # trailing space variant
     ]

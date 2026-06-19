@@ -1,0 +1,40 @@
+# Verbal-abuse / bullying keywords — one term or short phrase per line.
+# Used by src/pipeline/transcribe.py to flag transcribed speech.
+# Matching is case-insensitive and whole-word. Edit freely (FR / EN / AR…).
+# Lines starting with '#' and blank lines are ignored.
+
+# ── Threats / intimidation ─────────────────────────────────────────────
+i will hurt you
+i'll hurt you
+you are dead
+i will kill you
+watch your back
+you better run
+shut up or else
+i will find you
+
+# ── Insults / humiliation ──────────────────────────────────────────────
+loser
+idiot
+stupid
+freak
+ugly
+worthless
+nobody likes you
+you are nothing
+go away
+weakling
+
+# ── Exclusion / coercion ───────────────────────────────────────────────
+give me your money
+hand it over
+do it or else
+you can't sit here
+
+# ── French ─────────────────────────────────────────────────────────────
+ferme la
+dégage
+tais toi
+je vais te frapper
+t'es nul
+personne t'aime

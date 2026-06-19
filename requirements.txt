@@ -6,7 +6,6 @@ matplotlib
 tqdm
 Pillow
 requests
-streamlit
 torch
 torchvision
 ultralytics
@@ -14,3 +13,10 @@ openai-clip
 panns_inference
 librosa
 scikit-learn
+
+# Voice recognizer (speech-to-text → bad-word flagging)
+openai-whisper
+
+# React dashboard backend API
+fastapi
+uvicorn[standard]

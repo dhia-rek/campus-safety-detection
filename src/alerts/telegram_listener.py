@@ -1,7 +1,7 @@
 """
 Telegram Bot subscription listener.
 
-Runs as a background process alongside the Streamlit dashboard.
+Runs as a background process alongside the React dashboard / FastAPI backend.
 Handles three bot commands:
   /start  — subscribe the chat to bullying alerts
   /stop   — unsubscribe

@@ -5,7 +5,8 @@
   <img src="https://img.shields.io/badge/Python-3.8+-blue?style=for-the-badge&logo=python&logoColor=white"/>
   <img src="https://img.shields.io/badge/CLIP-OpenAI-412991?style=for-the-badge&logo=openai&logoColor=white"/>
   <img src="https://img.shields.io/badge/YOLO-Ultralytics-FF6600?style=for-the-badge"/>
-  <img src="https://img.shields.io/badge/Streamlit-Dashboard-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white"/>
+  <img src="https://img.shields.io/badge/React-Dashboard-61DAFB?style=for-the-badge&logo=react&logoColor=white"/>
+  <img src="https://img.shields.io/badge/FastAPI-Backend-009688?style=for-the-badge&logo=fastapi&logoColor=white"/>
   <img src="https://img.shields.io/badge/Telegram-Bot-26A5E4?style=for-the-badge&logo=telegram&logoColor=white"/>
 </p>
 
@@ -17,7 +18,7 @@
 
 ## Live Demo
 
-> Real-time bullying detection on ECE campus footage — Streamlit dashboard + Telegram Bot alert
+> Real-time bullying detection on ECE campus footage — React dashboard (FastAPI backend) + Telegram Bot alert
 
 > Score spikes to **1.771** as the system detects an ongoing abnormal event across 90 consecutive frames — Telegram Bot simultaneously pushes the annotated frame screenshot to subscribers.
 
@@ -40,7 +41,8 @@ Instead of training a supervised classifier on labeled abnormal videos, the syst
 | **Vision-Language AI** | CLIP compares frames against text descriptions of anomalies |
 | **Object-level analysis** | YOLO crops individual objects before CLIP scoring |
 | **Robust scoring** | Contrastive score → Z-score normalisation → Gaussian temporal smoothing |
-| **Real-time dashboard** | Streamlit live CCTV playback + bullying score graph |
+| **Real-time dashboard** | React (Vite) live CCTV playback + 3-modality score graph, FastAPI backend |
+| **Pluggable agents** | Perception · Coordinator · Action agents as drop-in modules (microkernel registry) |
 | **Telegram alerts** | Auto-pushes annotated frame screenshots to subscribers |
 
 ---
@@ -98,11 +100,12 @@ Step 4 — Visual Scoring (score.py)                          │
                                    │   max(visual_z, audio_z) per frame
               ┌────────────────────┼────────────────────┐
               ▼                    ▼                    ▼
-   Streamlit Dashboard    Telegram Listener   Step 7 — Evaluation
-   (src/dashboard/app.py) (telegram_listener)  (evaluate.py)
+   React Dashboard        Telegram Listener   Step 7 — Evaluation
+   (web/ + api.py)        (telegram_listener)  (evaluate.py)
    Live playback +        /start /stop         Frame-level ROC-AUC
-   modality badge +       /status              vs ground-truth masks
-   Telegram alerts
+   3-modality chart +     /status              vs ground-truth masks
+   agent decision panel
+   + Telegram alerts
 ```
 
 ---
@@ -123,19 +126,34 @@ Bullying_Detection-On-ECE-Campus/
 │   │   ├── embed.py                # Step 3b: encode crop images with CLIP
 │   │   ├── score.py                # Step 4: contrastive scoring + smoothing → CSV
 │   │   ├── audio_score.py          # Step 5: PANNs audio scoring → per-frame CSV
-│   │   ├── fuse.py                 # Step 6: max(visual_z, audio_z) → fused CSV
+│   │   ├── transcribe.py           # Speech → text (Whisper) + bad-word flagging
+│   │   ├── fuse.py                 # Step 6: fuse visual + audio + verbal → fused CSV
 │   │   ├── evaluate.py             # Step 7: frame-level ROC-AUC vs ground truth
 │   │   └── visualize.py            # Debug: replay a scene with live score overlay
 │   │
+│   ├── agents/                     # Pluggable multi-agent layer (microkernel)
+│   │   ├── base.py                 #   the contract: Observation, Decision, 3 base classes
+│   │   ├── registry.py             #   @register + auto-discovery of plugins/
+│   │   ├── runtime.py              #   core loop: perception → coordinator → action
+│   │   ├── context.py              #   shared scene blackboard
+│   │   └── plugins/                #   DROP-IN AGENTS (add a file = add a capability)
+│   │       ├── vision.py · sound.py · speech.py       # perception
+│   │       ├── coordinator_llm.py                     # coordinator (brain)
+│   │       └── action_telegram.py · action_webhook.py # action
+│   │
 │   ├── dashboard/
-│   │   └── app.py                  # Streamlit real-time monitoring dashboard
+│   │   └── api.py                  # FastAPI backend for the React dashboard
 │   │
 │   └── alerts/
 │       └── telegram_listener.py    # Telegram Bot subscription handler
 │
+├── web/                            # React (Vite) dashboard — audio-first UI
+│   └── src/                        #   components, api client, styles
+│
 ├── prompts/
 │   ├── normal.txt                       # CLIP text prompts for normal activities
 │   ├── abnormal.txt                     # CLIP text prompts for abnormal activities
+│   ├── bad_words.txt                    # verbal-abuse / hate-speech keywords
 │   └── violence_audio_classes.txt       # AudioSet class names to count as violence
 │
 ├── scripts/
@@ -220,14 +238,63 @@ SCORE_KIND=fused python -m src.pipeline.evaluate
 
 ### 4 — Launch the dashboard
 
+The dashboard is a React (Vite) front-end talking to a FastAPI backend.
+
 ```bash
 # Terminal 1 — Telegram subscription listener
 export TELEGRAM_TOKEN="your-bot-token"
 python -m src.alerts.telegram_listener
 
-# Terminal 2 — Streamlit dashboard
-streamlit run src/dashboard/app.py
+# Terminal 2 — FastAPI backend (serves scores, frames, agent decisions, alerts)
+export TELEGRAM_TOKEN="your-bot-token"
+uvicorn src.dashboard.api:app --reload --port 8000
+
+# Terminal 3 — React front-end (proxies /api to the backend)
+cd web && npm install && npm run dev      # → http://localhost:5173
 ```
+
+> Optional — the LLM coordinator runs locally via [Ollama](https://ollama.com)
+> (`ollama run llama3.1:8b`). If it isn't running, the coordinator falls back to
+> a transparent rule-based decision, so the dashboard still works.
+
+### 5 — Add n8n automation
+
+The project already includes an action agent that POSTs high-severity incidents to
+`INCIDENT_WEBHOOK_URL`. To wire it into n8n:
+
+1. Start n8n locally. Docker is the easiest reproducible option, but it is not required:
+
+    ```bash
+    cd automation/n8n
+    docker compose up -d
+    ```
+
+    If you do not want Docker, use a local Node.js install instead:
+
+    ```bash
+    npx n8n start
+    ```
+
+2. Open `http://localhost:5678`, create a workflow, and add a **Webhook** trigger.
+    Use the path `campus-incident` and the `POST` method.
+
+3. Add the nodes you want after the trigger, for example:
+    Telegram message, e-mail, Slack, Google Sheets, or an incident log.
+
+4. Copy the webhook URL from n8n and set it in `.env`:
+
+    ```bash
+    INCIDENT_WEBHOOK_URL=http://localhost:5678/webhook/campus-incident
+    ESCALATE_SEVERITIES=high
+    ```
+
+5. Restart the backend so the webhook action picks up the new environment.
+
+If you expose n8n beyond localhost, keep it behind authentication and TLS.
+
+The payload sent by the app contains the scene, frame index, the coordinator
+decision, and the perception observations. That makes it easy to fan out to any
+external workflow without changing the Python code.
 
 ---
 
