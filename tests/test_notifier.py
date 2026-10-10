@@ -36,6 +36,7 @@ def test_telegram_notifier_with_token_uses_subscribers_file(monkeypatch, tmp_pat
 
         class _Resp:
             status_code = 200
+            ok = True
 
         return _Resp()
 

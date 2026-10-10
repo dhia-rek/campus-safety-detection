@@ -14,9 +14,16 @@ export const getTelegram    = ()                       => j("/api/telegram/statu
 export const frameUrl       = (scene, idx)             => `/api/frame/${scene}/${idx}.jpg`;
 export const audioUrl       = (scene)                  => `/api/audio/${scene}.wav`;
 
-/** Run the agent pipeline on one frame. NOTE: the backend executes real action agents (may send alerts). */
+/** Dry run: perception + coordinator only. Never sends alerts. */
 export const getDecision = (scene, frame, threshold) =>
   j(`/api/decision/${scene}?frame=${frame}&threshold=${threshold}`);
+
+/** Same as getDecision but also runs the action agents (Telegram, e-mail, webhook): can send real alerts. */
+export const executeDecision = (scene, frame, threshold) =>
+  fetch(`/api/decision/${scene}/execute?frame=${frame}&threshold=${threshold}`, { method: "POST" }).then((r) => {
+    if (!r.ok) throw new Error(`${r.status} execute`);
+    return r.json();
+  });
 
 /** Manually push an alert for a frame; resolves with the backend JSON (even on HTTP errors). */
 export const sendAlert = (scene, frame, score, modality) =>

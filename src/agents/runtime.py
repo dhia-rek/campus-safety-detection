@@ -18,7 +18,7 @@ from src.agents.context import load_scene_context, peak_frame
 __all__ = ["analyze_frame", "load_scene_context", "peak_frame"]
 
 
-def analyze_frame(ctx: dict, frame: int) -> dict:
+def analyze_frame(ctx: dict, frame: int, run_actions: bool = True) -> dict:
     """Run the full multi-agent pipeline on one frame of a loaded scene.
 
     Returns a JSON-ready dict: the frame, each agent's observation, the brain's
@@ -27,6 +27,9 @@ def analyze_frame(ctx: dict, frame: int) -> dict:
     Args:
         ctx: Scene context from ``load_scene_context``. It is copied, not mutated.
         frame: Frame index to analyse.
+        run_actions: If False this is a dry run: perception and the coordinator
+            run but no action agent is called (nothing is sent), and ``actions``
+            is empty.
 
     Returns:
         Dict with ``scene``, ``frame``, ``observations`` (list of dicts),
@@ -45,10 +48,11 @@ def analyze_frame(ctx: dict, frame: int) -> dict:
     decision: Decision = registry.coordinator().decide(observations, ctx["threshold"])
 
     # 3 — Actions: react to the decision (alert, log, webhook…).
-    actions = {
-        agent.name: agent.handle(decision, observations, ctx)
-        for agent in registry.action_agents()
-    }
+    actions = (
+        {agent.name: agent.handle(decision, observations, ctx) for agent in registry.action_agents()}
+        if run_actions
+        else {}
+    )
 
     return {
         "scene":        ctx["scene"],

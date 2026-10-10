@@ -77,8 +77,8 @@ class TelegramNotifier:
     def send_photo(self, image_path: str, caption: str) -> dict:
         """Send the image to every subscriber, continuing past per-chat failures.
 
-        The file is reopened for each subscriber. Note a request that returns an
-        HTTP error status still counts as sent (the status is not checked).
+        The file is reopened for each subscriber. A non-2xx response from Telegram
+        counts as a failure: it is logged and not included in the sent count.
 
         Returns:
             ``{"sent": n}`` or ``{"sent": 0, "skipped": reason}``.
@@ -93,8 +93,11 @@ class TelegramNotifier:
         for chat_id in subs:
             try:
                 with open(image_path, "rb") as img:
-                    requests.post(url, data={"chat_id": chat_id, "caption": caption}, files={"photo": img}, timeout=15)
-                sent += 1
+                    resp = requests.post(url, data={"chat_id": chat_id, "caption": caption}, files={"photo": img}, timeout=15)
+                if resp.ok:
+                    sent += 1
+                else:
+                    print(f"[telegram] send failed for a subscriber: HTTP {resp.status_code}")
             except (OSError, requests.RequestException) as exc:
                 print(f"[telegram] error sending to a subscriber: {type(exc).__name__}")  # never log the URL: it holds the token
         return {"sent": sent}

@@ -42,8 +42,8 @@ class WebhookAction(ActionAgent):
         Returns:
             ``{"dispatched": True}`` on success, otherwise ``{"dispatched": False,
             "reason": ...}`` (unset URL, severity not escalated, or request
-            error). Only the request's connection errors are caught; the HTTP
-            status of the response is not checked.
+            error). A non-2xx HTTP response counts as a failure: it is logged and
+            not reported as dispatched.
         """
         if not INCIDENT_WEBHOOK_URL:
             return {"dispatched": False, "reason": "no INCIDENT_WEBHOOK_URL set"}
@@ -58,8 +58,9 @@ class WebhookAction(ActionAgent):
             "observations": [o.to_dict() for o in observations],
         }
         try:
-            requests.post(INCIDENT_WEBHOOK_URL, json=payload, timeout=10)
+            resp = requests.post(INCIDENT_WEBHOOK_URL, json=payload, timeout=10)
+            resp.raise_for_status()
             return {"dispatched": True}
-        except Exception as exc:
+        except requests.RequestException as exc:  # includes HTTPError from raise_for_status()
             print(f"[webhook] automation webhook failed: {exc}")
             return {"dispatched": False, "reason": str(exc)}
