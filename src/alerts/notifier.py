@@ -93,8 +93,8 @@ class TelegramNotifier:
         for chat_id in subs:
             try:
                 with open(image_path, "rb") as img:
-                    resp = requests.post(url, data={"chat_id": chat_id, "caption": caption}, files={"photo": img}, timeout=15)
-                if resp.ok:
+                    resp = requests.post(url, data={"chat_id": chat_id, "caption": caption}, files={"photo": img}, timeout=15, allow_redirects=False)
+                if 200 <= resp.status_code < 300:
                     sent += 1
                 else:
                     print(f"[telegram] send failed for a subscriber: HTTP {resp.status_code}")

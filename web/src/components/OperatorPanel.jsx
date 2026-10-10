@@ -60,7 +60,7 @@ export default function OperatorPanel({ scene, frame, threshold, signals, avail 
 
   // Auto-run on the rising edge of an alert (don't hammer it every frame).
   useEffect(() => {
-    if (alert && !prevAlert.current) run(false);
+    if (alert && !prevAlert.current) run(true);
     prevAlert.current = alert;
   }, [alert]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -106,7 +106,7 @@ export default function OperatorPanel({ scene, frame, threshold, signals, avail 
 
         {decision?.error && <div className="banner error">{decision.error}</div>}
         {!decision && !loading && (
-          <p className="muted small">Runs automatically on an alert (analysis only) — click <b>run</b> to refresh or <b>notify</b> to also send alerts.</p>
+          <p className="muted small">Notifies automatically when an alert begins — click <b>run</b> for analysis only or <b>notify</b> to send alerts again.</p>
         )}
         {loading && <p className="muted small">Analyzing frame {frame}…</p>}
 

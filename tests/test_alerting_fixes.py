@@ -39,12 +39,26 @@ class _Resp:
 
 
 # 1. HTTP status checks -------------------------------------------------------------------------
-def test_webhook_non_2xx_is_not_dispatched(monkeypatch):
+def test_webhook_non_2xx_is_not_dispatched(monkeypatch, capsys):
     monkeypatch.setattr(action_webhook, "INCIDENT_WEBHOOK_URL", "https://hook.example/x")
     monkeypatch.setattr(action_webhook.requests, "post", lambda *a, **k: _Resp(500))
     res = action_webhook.WebhookAction().handle(_decision(), [], {"scene": "s", "frame": 1})
     assert res["dispatched"] is False
     assert "500" in res["reason"]
+    assert "automation webhook failed" in capsys.readouterr().out
+
+
+def test_webhook_redirect_is_not_dispatched(monkeypatch, capsys):
+    monkeypatch.setattr(action_webhook, "INCIDENT_WEBHOOK_URL", "https://hook.example/x")
+    def redirect(*_args, **kwargs):
+        assert kwargs["allow_redirects"] is False
+        return _Resp(302)
+
+    monkeypatch.setattr(action_webhook.requests, "post", redirect)
+    res = action_webhook.WebhookAction().handle(_decision(), [], {"scene": "s", "frame": 1})
+    assert res["dispatched"] is False
+    assert "302" in res["reason"]
+    assert "automation webhook failed" in capsys.readouterr().out
 
 
 def test_webhook_2xx_is_dispatched(monkeypatch):
@@ -54,15 +68,18 @@ def test_webhook_2xx_is_dispatched(monkeypatch):
     assert res == {"dispatched": True}
 
 
-def test_telegram_http_error_is_not_counted_as_sent(monkeypatch, tmp_path):
+def test_telegram_http_error_is_not_counted_as_sent(monkeypatch, tmp_path, capsys):
     subs = tmp_path / "subs.json"
-    subs.write_text(json.dumps({"subscribers": [1, 2]}), encoding="utf-8")
+    subs.write_text(json.dumps({"subscribers": [1, 2, 3]}), encoding="utf-8")
     img = tmp_path / "f.jpg"
     img.write_bytes(b"x")
-    statuses = iter([200, 403])  # second subscriber blocked the bot
+    statuses = iter([200, 403, 302])  # rejected/redirected sends must not count
     monkeypatch.setattr(notifier.requests, "post", lambda *a, **k: _Resp(next(statuses)))
     n = notifier.TelegramNotifier(token="t", subscriber_file=str(subs))
     assert n.send_photo(str(img), "cap") == {"sent": 1}
+    output = capsys.readouterr().out
+    assert "HTTP 403" in output
+    assert "HTTP 302" in output
 
 
 # 2. HTML escaping ------------------------------------------------------------------------------
@@ -112,6 +129,18 @@ def test_email_cooldown_starts_after_successful_send(monkeypatch):
     assert action_email._last_email_ts > 0
     out2 = action_email.EmailAction().handle(_decision(), [], {"scene": "s", "frame": 1})
     assert out2 == {"sent": False, "skipped": "cooldown"}
+
+
+def test_email_missing_attachment_is_logged_failure_without_cooldown(monkeypatch, tmp_path, capsys):
+    monkeypatch.setattr(action_email, "SMTP_USER", "sender@example.com")
+    monkeypatch.setattr(action_email, "SMTP_PASS", "test-password")
+    monkeypatch.setattr(action_email, "EMAIL_CLIP", False)
+    monkeypatch.setattr(action_email, "_frame_path", lambda *_a: str(tmp_path / "missing.jpg"))
+    monkeypatch.setattr(action_email, "_last_email_ts", 0.0)
+    result = action_email._send_and_record("scene", 1, _decision())
+    assert result["sent"] is False
+    assert "send failed" in capsys.readouterr().out
+    assert action_email._last_email_ts == 0.0
 
 
 # 4. GET decision is a dry run ------------------------------------------------------------------
@@ -177,7 +206,7 @@ def test_no_personal_address_in_source():
 
 
 # 6. scan_audio_clips: no hard-coded path, main guard -------------------------------------------
-def test_scan_audio_clips_has_no_hardcoded_path_and_main_guard():
+def test_scan_audio_clips_has_no_hardcoded_path_and_main_guard(monkeypatch):
     src = (ROOT / "scripts" / "scan_audio_clips.py").read_text(encoding="utf-8")
     assert "/Users/" not in src
     assert '__name__ == "__main__"' in src
@@ -196,6 +225,29 @@ def test_scan_audio_clips_has_no_hardcoded_path_and_main_guard():
         with pytest.raises(SystemExit) as e:
             mod.main([])  # no folder, no env var -> usage error
         assert e.value.code == 2
+
+        # Both documented path sources must reach the scan, not merely pass
+        # argument parsing. Stub the ML work so this is a fast unit test.
+        import numpy as np
+
+        clip_dir = ROOT / "tests" / ".tmp_scan_audio_clips"
+        clip_dir.mkdir(exist_ok=True)
+        clip = clip_dir / "V_1.mp4"
+        clip.write_bytes(b"fixture")
+        monkeypatch.setattr(mod, "librosa", SimpleNamespace(
+            load=lambda *_a, **_k: (np.ones(16000, dtype=float), 32000)))
+        monkeypatch.setattr(mod, "AudioTagging", lambda **_k: SimpleNamespace(
+            inference=lambda _windows: (np.ones((1, 1)), None)))
+        monkeypatch.setattr(mod, "load_target_class_indices", lambda _labels: ([0], ["violence"]))
+        monkeypatch.setattr(mod, "slice_windows", lambda *_a: object())
+        monkeypatch.setattr(mod, "audioset_labels", [])
+        try:
+            assert mod.main([str(clip_dir)]) == 0  # positional CLI path
+            monkeypatch.setenv("RLVS_VIOLENCE_DIR", str(clip_dir))
+            assert mod.main([]) == 0  # environment path
+        finally:
+            clip.unlink()
+            clip_dir.rmdir()
     finally:
         for k, v in saved.items():
             if v is None:

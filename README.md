@@ -115,6 +115,15 @@ bash scripts/run_pipeline.sh quick
 ```
 *Note: A dataset containing video clips and corresponding `.wav` audio files is required.*
 
+To inspect a separate RLVS `Violence` folder and rank a sample of clips by violence-sound score,
+pass its path or set `RLVS_VIOLENCE_DIR` (PANNs/ML dependencies must be installed):
+
+```bash
+uv run python scripts/scan_audio_clips.py /path/to/Violence
+# or
+RLVS_VIOLENCE_DIR=/path/to/Violence uv run python scripts/scan_audio_clips.py
+```
+
 ## Configuration
 
 Set configuration parameters via environment variables or a `.env` file (see `.env.example`):

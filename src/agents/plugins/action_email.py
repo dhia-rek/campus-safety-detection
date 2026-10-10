@@ -172,13 +172,13 @@ def _send_and_record(scene: str, frame: int, decision: Decision) -> dict:
     global _last_email_ts, _in_flight
     try:
         result = _send_email(scene, frame, decision)
+        with _state_lock:
+            if result.get("sent"):
+                _last_email_ts = time.time()
+        return result
     finally:
         with _state_lock:
             _in_flight = False
-    if result.get("sent"):
-        with _state_lock:
-            _last_email_ts = time.time()
-    return result
 
 
 def _send_email(scene: str, frame: int, decision: Decision) -> dict:
@@ -193,39 +193,39 @@ def _send_email(scene: str, frame: int, decision: Decision) -> dict:
     """
     if not (SMTP_USER and SMTP_PASS):
         return {"sent": False, "skipped": "SMTP_USER/SMTP_PASS not set"}
-    icon, _ = SEV_STYLE.get(decision.severity, SEV_STYLE["medium"])
-    fpath = _frame_path(scene, frame)
-
-    msg = EmailMessage()
-    msg["Subject"] = f"{icon} [Campus Safety] {decision.severity.upper()} incident — {scene} frame {frame}"
-    msg["From"] = EMAIL_FROM
-    msg["To"] = EMAIL_TO
-    msg.set_content(
-        f"CCTV ANOMALY ALERT\nScene: {scene} | Frame: {frame} | Severity: {decision.severity}\n"
-        f"Report: {decision.report}\nAction: {decision.action}"
-    )
-    msg.add_alternative(_html(scene, frame, decision, has_frame=bool(fpath)), subtype="html")
-
-    # inline frame image (referenced by cid:frame in the HTML)
-    if fpath:
-        with open(fpath, "rb") as f:
-            cast(Any, msg.get_payload())[1].add_related(f.read(), maintype="image", subtype="jpeg", cid="frame")
-
-    # attach a short video clip of the footage around the incident
-    if EMAIL_CLIP:
-        clip = _build_clip(scene, frame)
-        if clip:
-            with open(clip, "rb") as f:
-                msg.add_attachment(f.read(), maintype="video", subtype="mp4",
-                                   filename=f"{scene}_incident.mp4")
-
     try:
+        icon, _ = SEV_STYLE.get(decision.severity, SEV_STYLE["medium"])
+        fpath = _frame_path(scene, frame)
+
+        msg = EmailMessage()
+        msg["Subject"] = f"{icon} [Campus Safety] {decision.severity.upper()} incident — {scene} frame {frame}"
+        msg["From"] = EMAIL_FROM
+        msg["To"] = EMAIL_TO
+        msg.set_content(
+            f"CCTV ANOMALY ALERT\nScene: {scene} | Frame: {frame} | Severity: {decision.severity}\n"
+            f"Report: {decision.report}\nAction: {decision.action}"
+        )
+        msg.add_alternative(_html(scene, frame, decision, has_frame=bool(fpath)), subtype="html")
+
+        # inline frame image (referenced by cid:frame in the HTML)
+        if fpath:
+            with open(fpath, "rb") as f:
+                cast(Any, msg.get_payload())[1].add_related(f.read(), maintype="image", subtype="jpeg", cid="frame")
+
+        # attach a short video clip of the footage around the incident
+        if EMAIL_CLIP:
+            clip = _build_clip(scene, frame)
+            if clip:
+                with open(clip, "rb") as f:
+                    msg.add_attachment(f.read(), maintype="video", subtype="mp4",
+                                       filename=f"{scene}_incident.mp4")
+
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=NETWORK_TIMEOUT_SEC) as s:
             s.starttls()
             s.login(SMTP_USER, SMTP_PASS)
             s.send_message(msg)
         return {"sent": True, "to": EMAIL_TO}
-    except Exception as exc:  # any SMTP/network failure must not crash the worker thread
+    except Exception as exc:  # message-build, attachment, or SMTP failure must not crash the worker thread
         print(f"[email] send failed: {exc}")
         return {"sent": False, "reason": str(exc)}
 

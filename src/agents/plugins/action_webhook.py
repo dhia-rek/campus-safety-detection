@@ -58,9 +58,12 @@ class WebhookAction(ActionAgent):
             "observations": [o.to_dict() for o in observations],
         }
         try:
-            resp = requests.post(INCIDENT_WEBHOOK_URL, json=payload, timeout=10)
-            resp.raise_for_status()
-            return {"dispatched": True}
-        except requests.RequestException as exc:  # includes HTTPError from raise_for_status()
-            print(f"[webhook] automation webhook failed: {exc}")
-            return {"dispatched": False, "reason": str(exc)}
+            resp = requests.post(INCIDENT_WEBHOOK_URL, json=payload, timeout=10, allow_redirects=False)
+        except requests.RequestException as exc:
+            print(f"[webhook] automation webhook failed: {type(exc).__name__}")
+            return {"dispatched": False, "reason": type(exc).__name__}
+        if not 200 <= resp.status_code < 300:
+            reason = f"HTTP {resp.status_code}"
+            print(f"[webhook] automation webhook failed: {reason}")
+            return {"dispatched": False, "reason": reason}
+        return {"dispatched": True}
