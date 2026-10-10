@@ -1,5 +1,4 @@
-"""
-Step 5b — Voice recognizer: transcribe speech and flag verbal abuse.
+"""Step 5b — Voice recognizer: transcribe speech and flag verbal abuse.
 
 Complements the PANNs audio scorer (step 5). Where audio_score.py detects the
 *sound* of violence (screams, shouting, impacts), this step recognises the
@@ -56,7 +55,11 @@ WHISPER_LANG  = os.getenv("WHISPER_LANG", "").strip() or None
 
 
 def load_bad_words() -> list[str]:
-    """Read bad_words.txt (skipping comments/blank lines), lower-cased."""
+    """Read bad_words.txt (skipping comments/blank lines), lower-cased.
+
+    Raises:
+        FileNotFoundError: If the list file does not exist.
+    """
     if not BAD_WORDS_FILE.is_file():
         raise FileNotFoundError(f"Bad-words list not found: {BAD_WORDS_FILE}")
     terms = []
@@ -68,18 +71,45 @@ def load_bad_words() -> list[str]:
 
 
 def build_matcher(terms: list[str]) -> re.Pattern:
-    """Compile one whole-word, case-insensitive regex for all terms/phrases."""
+    r"""Compile one whole-word, case-insensitive regex for all terms/phrases.
+
+    Args:
+        terms: Non-empty list of words or phrases (matched literally).
+
+    Returns:
+        Compiled pattern with ``\b`` boundaries, so "ass" will not match "class".
+    """
     # Sort longest-first so multi-word phrases win over their sub-words.
     parts = [re.escape(t) for t in sorted(terms, key=len, reverse=True)]
     return re.compile(r"\b(" + "|".join(parts) + r")\b", re.IGNORECASE)
 
 
 def find_bad_words(text: str, matcher: re.Pattern) -> list[str]:
-    """Return the list of flagged terms found in *text* (may repeat)."""
+    """Return the list of flagged terms found in *text* (may repeat).
+
+    Args:
+        text: Transcribed segment text.
+        matcher: Pattern from ``build_matcher``.
+
+    Returns:
+        Lower-cased matches in order of appearance.
+    """
     return [m.group(0).lower() for m in matcher.finditer(text)]
 
 
 def main() -> None:
+    """Transcribe WAV_PATH with Whisper, save transcripts and a verbal-score CSV.
+
+    A frame's verbal_score is the largest bad-word count among the Whisper
+    segments covering its timestamp (not a sum, so overlapping segments do not
+    double count). Audio is loaded with librosa at 16 kHz and passed to Whisper
+    as an array to avoid a system ffmpeg dependency; fp16 is off because the
+    model runs on CPU. Heavy deps (librosa, whisper) are imported lazily.
+
+    Raises:
+        RuntimeError: If WAV_PATH/SCENE are unset.
+        FileNotFoundError: If the WAV or bad-words file is missing.
+    """
     if not WAV_PATH or not SCENE:
         raise RuntimeError("WAV_PATH and SCENE environment variables are required.")
     if not os.path.isfile(WAV_PATH):

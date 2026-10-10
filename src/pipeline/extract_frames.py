@@ -1,5 +1,4 @@
-"""
-Step 0 — Extract frames from training videos.
+"""Step 0 — Extract frames from training videos.
 
 Reads every .avi file under DATASET_ROOT/training/videos and writes
 individual JPEG frames to DATASET_ROOT/training/frames/<video_stem>/.
@@ -32,7 +31,15 @@ MAX_VIDEOS   = int(os.getenv("MAX_VIDEOS", "0") or "0")
 def extract_video(video_path: Path, output_dir: Path) -> int:
     """Write every frame of *video_path* as a JPEG into *output_dir*.
 
-    Returns the number of frames written.
+    Frames are named with a zero-padded 0-based index (``000000.jpg``) so that
+    sorted order equals temporal order.
+
+    Args:
+        video_path: Source video file.
+        output_dir: Destination directory (created if needed).
+
+    Returns:
+        Number of frames successfully written (0 if the video cannot be opened).
     """
     cap = cv2.VideoCapture(str(video_path))
     if not cap.isOpened():
@@ -55,6 +62,11 @@ def extract_video(video_path: Path, output_dir: Path) -> int:
 
 
 def main() -> None:
+    """Extract frames for all (optionally filtered/capped) training videos.
+
+    Raises:
+        FileNotFoundError: If VIDEOS_DIR does not exist.
+    """
     if not VIDEOS_DIR.is_dir():
         raise FileNotFoundError(f"Training videos not found: {VIDEOS_DIR}")
 

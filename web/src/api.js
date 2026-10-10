@@ -1,4 +1,5 @@
 // Thin wrapper around the FastAPI backend (src/dashboard/api.py).
+/** GET a URL and parse JSON; non-2xx responses throw so callers can surface the error. */
 const j = (url) => fetch(url).then((r) => {
   if (!r.ok) throw new Error(`${r.status} ${url}`);
   return r.json();
@@ -13,9 +14,11 @@ export const getTelegram    = ()                       => j("/api/telegram/statu
 export const frameUrl       = (scene, idx)             => `/api/frame/${scene}/${idx}.jpg`;
 export const audioUrl       = (scene)                  => `/api/audio/${scene}.wav`;
 
+/** Run the agent pipeline on one frame. NOTE: the backend executes real action agents (may send alerts). */
 export const getDecision = (scene, frame, threshold) =>
   j(`/api/decision/${scene}?frame=${frame}&threshold=${threshold}`);
 
+/** Manually push an alert for a frame; resolves with the backend JSON (even on HTTP errors). */
 export const sendAlert = (scene, frame, score, modality) =>
   fetch("/api/alert", {
     method: "POST",

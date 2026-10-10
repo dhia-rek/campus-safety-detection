@@ -1,8 +1,7 @@
-"""
-Telegram Bot subscription listener.
+"""Telegram Bot subscription listener.
 
 Runs as a background process alongside the React dashboard / FastAPI backend.
-Handles three bot commands:
+Handles four bot commands:
   /start  — subscribe the chat to bullying alerts
   /stop   — unsubscribe
   /status — report the number of active subscribers
@@ -38,7 +37,14 @@ POLL_INTERVAL_SEC = 2
 
 
 def load_env_file(path: str = ".env") -> None:
-    """Parse a simple KEY=VALUE .env file and populate os.environ (no-op if missing)."""
+    """Parse a simple KEY=VALUE .env file and populate os.environ (no-op if missing).
+
+    Existing environment variables win (``setdefault``). Blank lines, ``#``
+    comments and lines without ``=`` are skipped; surrounding quotes are stripped.
+
+    Args:
+        path: Path of the .env file, relative to the current working directory.
+    """
     if not os.path.isfile(path):
         return
     with open(path, encoding="utf-8") as f:
@@ -62,7 +68,11 @@ def get_telegram_token() -> str:
 
 
 def load_subscribers() -> set[int]:
-    """Read the subscriber list from disk. Returns an empty set if the file is absent."""
+    """Read the subscriber list from disk. Returns an empty set if the file is absent.
+
+    Raises:
+        ValueError: If the file exists but is not valid JSON.
+    """
     if not os.path.isfile(SUBSCRIBER_FILE):
         return set()
     with open(SUBSCRIBER_FILE, encoding="utf-8") as f:
@@ -78,12 +88,30 @@ def save_subscribers(subscribers: set[int]) -> None:
 
 
 def send_message(token: str, chat_id: int, text: str) -> None:
-    """Send a plain-text message to a Telegram chat."""
+    """Send a plain-text message to a Telegram chat.
+
+    Args:
+        token: Bot API token.
+        chat_id: Destination chat id.
+        text: Message body.
+
+    The HTTP response is ignored; network errors propagate to the caller.
+    """
     url = f"https://api.telegram.org/bot{token}/sendMessage"
     requests.post(url, data={"chat_id": chat_id, "text": text}, timeout=20)
 
 
 def main() -> None:
+    """Long-poll Telegram for bot commands and maintain the subscriber list.
+
+    Handles /start, /stop, /status and /help forever, using getUpdates long
+    polling (30 s server-side) and advancing ``offset`` so each update is
+    handled once. Errors are logged and retried after ``POLL_INTERVAL_SEC``;
+    Ctrl-C stops the loop.
+
+    Raises:
+        RuntimeError: If no bot token can be found.
+    """
     token = get_telegram_token()
     if not token:
         raise RuntimeError(

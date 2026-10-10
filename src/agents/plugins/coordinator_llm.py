@@ -1,5 +1,4 @@
-"""
-Coordinator agent — the LLM reasoning layer (the brain).
+"""Coordinator agent — the LLM reasoning layer (the brain).
 
 Receives the perception agents' Observations and decides: is this a real
 bullying/safety incident? how severe? a short report + recommended action.
@@ -19,6 +18,7 @@ from __future__ import annotations
 
 import json
 import os
+from typing import Any
 
 import requests
 
@@ -53,6 +53,16 @@ SYSTEM_PROMPT = (
 
 
 def _build_user_prompt(observations: list[Observation], threshold: float) -> str:
+    """Render observations as the user message for the LLM.
+
+    Only derived text goes in: per-modality z-scores and trigger state, plus the
+    flagged speech wrapped in ``<transcript>`` tags so the system prompt can
+    mark it as untrusted. If several observations carry detail, the last wins.
+
+    Args:
+        observations: Perception outputs.
+        threshold: Alert threshold, shown to the model for context.
+    """
     lines = [f"Alert threshold (z-score) = {threshold:.2f}", "", "Signals:"]
     transcript = ""
     for o in observations:
@@ -70,7 +80,18 @@ def _build_user_prompt(observations: list[Observation], threshold: float) -> str
 
 
 def _heuristic(observations: list[Observation]) -> Decision:
-    """Transparent fallback used when the LLM is unavailable."""
+    """Transparent fallback used when the LLM is unavailable.
+
+    Rules: nothing triggered and no flagged words → none; flagged words plus at
+    least one triggered modality → high; two or more triggered → high; exactly
+    one → medium; flagged words alone → low.
+
+    Args:
+        observations: Perception outputs.
+
+    Returns:
+        A Decision with ``source="heuristic"``.
+    """
     triggered  = [o for o in observations if o.triggered]
     mods       = [o.modality for o in triggered]
     speech     = next((o for o in observations if o.agent == "speech"), None)
@@ -87,11 +108,11 @@ def _heuristic(observations: list[Observation]) -> Decision:
     else:
         sev, incident = "low", True
 
-    detail = f" Flagged words: {speech.detail}." if verbal_hit else ""
+    detail = f" Flagged words: {speech.detail}." if speech is not None and verbal_hit else ""
     return Decision(
         is_incident=incident,
         severity=sev,
-        modalities=mods or ([speech.modality] if verbal_hit else []),
+        modalities=mods or ([speech.modality] if speech is not None and verbal_hit else []),
         reasoning=f"{len(triggered)} modality signal(s) triggered.{detail}",
         action="Notify operator and review footage." if incident else "No action.",
         report=(
@@ -103,7 +124,16 @@ def _heuristic(observations: list[Observation]) -> Decision:
 
 
 def _call_ollama(observations: list[Observation], threshold: float) -> Decision:
-    payload = {
+    """Ask the local Ollama model for a Decision.
+
+    Uses JSON mode and a low temperature (0.2) for stable, parseable output.
+    Missing fields get safe defaults and an unrecognised severity becomes "none".
+
+    Raises:
+        requests.RequestException: On connection/HTTP errors.
+        ValueError, KeyError: If the reply is not the expected JSON.
+    """
+    payload: dict[str, Any] = {
         "model": OLLAMA_MODEL,
         "messages": [
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -133,12 +163,15 @@ def _call_ollama(observations: list[Observation], threshold: float) -> Decision:
 
 @register
 class LLMCoordinator(Coordinator):
+    """Coordinator that asks a local LLM and falls back to rules on any failure."""
+
     name        = "coordinator_llm"
     label       = "Coordinator (local LLM)"
     tier        = "starter"
     description = "Local LLM that fuses all signals into a decision, with a heuristic fallback."
 
     def decide(self, observations: list[Observation], threshold: float = 1.0) -> Decision:
+        """Return the LLM's decision, or the heuristic one if the call fails for any reason."""
         try:
             return _call_ollama(observations, threshold)
         except Exception as exc:

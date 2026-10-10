@@ -9,6 +9,12 @@ import OperatorPanel from "./components/OperatorPanel.jsx";
 import AgentsGrid from "./components/AgentsGrid.jsx";
 import TelegramBadge from "./components/TelegramBadge.jsx";
 
+/**
+ * Dashboard root: loads scenes, drives frame playback and derives per-modality signals.
+ *
+ * The audio clip (when a scene has one) is the master clock during playback, so the
+ * frame index follows `audio.currentTime`; otherwise a timer advances frames at `fps`.
+ */
 export default function App() {
   const [scenes, setScenes]       = useState([]);
   const [scene, setScene]         = useState("");

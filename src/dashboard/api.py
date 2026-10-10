@@ -1,5 +1,4 @@
-"""
-FastAPI backend for the React monitoring dashboard.
+"""FastAPI backend for the React monitoring dashboard.
 
 Exposes the scored scenes, per-frame score streams, frame images, the agent
 catalog/decisions, and Telegram alerting as a small JSON/HTTP API that the
@@ -65,6 +64,7 @@ _last_alert_ts = 0.0
 
 
 def _csv_path(scene: str, kind: str) -> Path:
+    """Path of a scene's score CSV of the given kind (``fused``, ``frames`` or ``audio``)."""
     return SCORES_ROOT / SPLIT / kind / f"{scene}_{kind}.csv"
 
 
@@ -75,13 +75,19 @@ def _scene_frames(scene: str) -> list[str]:
 
 
 def _available_modes(scene: str) -> list[str]:
+    """Score modes for which the scene has a CSV on disk."""
     return [kind for kind in SCORE_MODES if _csv_path(scene, kind).is_file()]
 
 
 # ── Endpoints ─────────────────────────────────────────────────────────────────
 @app.get("/api/scenes")
 def list_scenes() -> dict:
-    """Every scene that has frames AND at least one score CSV."""
+    """Every scene that has frames AND a fused score CSV.
+
+    Returns:
+        ``{"scenes": [{scene, modes, n_frames, audio}, ...]}`` where ``audio``
+        says whether an extracted .wav exists.
+    """
     if not TEST_FRAMES_ROOT.is_dir():
         return {"scenes": []}
     scenes = []
@@ -100,7 +106,18 @@ def list_scenes() -> dict:
 
 @app.get("/api/scene/{scene}")
 def scene_scores(scene: str, mode: str = "fused") -> dict:
-    """Per-frame score streams for *scene*, densified onto frame 0..N-1."""
+    """Per-frame score streams for *scene*, densified onto frame 0..N-1.
+
+    Frames missing from the CSV are filled with 0.0 so every series has exactly
+    one value per frame image and the chart lines up with the video.
+
+    Args:
+        scene: Scene id.
+        mode: One of ``SCORE_MODES`` (``fused``, ``frames``, ``audio``).
+
+    Raises:
+        HTTPException: 400 for an unknown mode; 404 if the CSV or frames are missing.
+    """
     if mode not in SCORE_MODES:
         raise HTTPException(400, f"Unknown mode '{mode}'")
     csv = _csv_path(scene, mode)
@@ -120,7 +137,7 @@ def scene_scores(scene: str, mode: str = "fused") -> dict:
     )
 
     spec = SCORE_MODES[mode]
-    cols = [c for c in (spec["chart_cols"] + [spec["alert_col"]]) if c in df.columns]
+    cols = [c for c in [*spec["chart_cols"], spec["alert_col"]] if c in df.columns]
     series = {c: df[c].round(4).tolist() for c in cols}
 
     wav = RUNTIME_ROOT / "clips" / f"{scene}.wav"
@@ -138,7 +155,11 @@ def scene_scores(scene: str, mode: str = "fused") -> dict:
 
 @app.get("/api/audio/{scene}.wav")
 def scene_audio(scene: str) -> FileResponse:
-    """Serve the scene's extracted audio track (if the clip had one)."""
+    """Serve the scene's extracted audio track (if the clip had one).
+
+    Raises:
+        HTTPException: 404 if no .wav exists.
+    """
     wav = RUNTIME_ROOT / "clips" / f"{scene}.wav"
     if not wav.is_file():
         raise HTTPException(404, "No audio for this scene")
@@ -147,6 +168,11 @@ def scene_audio(scene: str) -> FileResponse:
 
 @app.get("/api/frame/{scene}/{idx}.jpg")
 def frame_image(scene: str, idx: int) -> FileResponse:
+    """Serve the *idx*-th frame of a scene as JPEG.
+
+    Raises:
+        HTTPException: 404 if *idx* is out of range.
+    """
     frames = _scene_frames(scene)
     if not (0 <= idx < len(frames)):
         raise HTTPException(404, "Frame index out of range")
@@ -158,7 +184,8 @@ def frame_detections(scene: str, idx: int) -> dict:
     """YOLO bounding boxes for one frame (for the live video overlay).
 
     Boxes are in the frame's native pixel coords: {label, conf, bbox:[x1,y1,x2,y2]}.
-    Empty list if the scene hasn't been run through detect.py."""
+    Empty list if the scene hasn't been run through detect.py or *idx* is out of range.
+    """
     from src.paths import DETECTIONS_ROOT
     frames = _scene_frames(scene)
     if not (0 <= idx < len(frames)):
@@ -182,8 +209,11 @@ def scene_transcript(scene: str) -> dict:
 
 @app.get("/api/progress")
 def batch_progress() -> dict:
-    """Live batch-processing progress: how many testing scenes are detected
-    (embedded) and fully ready (fused) out of the total. Drives the UI bar."""
+    """Report live batch-processing progress for the UI bar.
+
+    Counts testing scenes that are detected (embedded) and fully ready (fused),
+    out of the total.
+    """
     from src.paths import FEATURES_ROOT
     total = sum(1 for p in TEST_FRAMES_ROOT.iterdir() if p.is_dir()) if TEST_FRAMES_ROOT.is_dir() else 0
     feat_dir = FEATURES_ROOT / SPLIT
@@ -195,16 +225,25 @@ def batch_progress() -> dict:
 
 @app.get("/api/agents")
 def agents_catalog() -> dict:
-    """The installed agent catalog (perception / coordinator / action) for the
-    UI grid and admin console — each agent's role, tier and enabled state."""
+    """Return the installed agent catalog (perception / coordinator / action).
+
+    Feeds the UI grid and admin console with each agent's role, tier and enabled state.
+    """
     from src.agents import registry
     return {"agents": registry.catalog()}
 
 
 @app.get("/api/decision/{scene}")
 def coordinator_decision(scene: str, frame: int | None = None, threshold: float = 1.0) -> dict:
-    """Run the full pluggable multi-agent pipeline (perception → coordinator →
-    actions) on a frame (default: the scene's peak fused frame)."""
+    """Run the full agent pipeline (perception, coordinator, actions) on one frame.
+
+    Defaults to the scene's peak fused frame.
+
+    Note this runs real action agents, so it can send alerts.
+
+    Raises:
+        HTTPException: 404 if the scene has no fused scores.
+    """
     from src.agents.context import load_scene_context, peak_frame
     from src.agents.runtime import analyze_frame
 
@@ -219,11 +258,14 @@ def coordinator_decision(scene: str, frame: int | None = None, threshold: float 
 
 @app.get("/api/telegram/status")
 def telegram_status() -> dict:
+    """Report whether alerting is configured, the subscriber count, and whether it is the mock."""
     notifier = get_notifier()
     return {"token_set": notifier.configured, "subscribers": len(notifier.subscribers()), "mock": notifier.mock}
 
 
 class AlertRequest(BaseModel):
+    """Body of ``POST /api/alert``: which frame/score the operator wants to flag."""
+
     scene: str
     frame: int
     score: float
@@ -235,7 +277,15 @@ def send_alert(req: AlertRequest) -> dict:
     """Manual alert button: push an annotated frame to subscribers (with cooldown).
 
     Reuses the Telegram action agent's send path so the manual and automatic
-    alert routes are identical."""
+    alert routes are identical.
+
+    Raises:
+        HTTPException: 400 if no Telegram token is configured (mock counts as configured).
+
+    Returns:
+        The send result, or ``{"sent": 0, "skipped": "cooldown"}``. The cooldown
+        is separate from the Telegram action agent's own cooldown.
+    """
     global _last_alert_ts
 
     if not get_notifier().configured:

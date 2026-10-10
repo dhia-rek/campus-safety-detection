@@ -14,6 +14,8 @@ from src.agents.registry import register
 
 @register
 class SpeechAgent(PerceptionAgent):
+    """Perception agent for the ``verbal_z`` signal plus any flagged words."""
+
     name        = "speech"
     label       = "Speech (Whisper)"
     tier        = "pro"
@@ -21,7 +23,14 @@ class SpeechAgent(PerceptionAgent):
     col         = "verbal_z"
 
     def _spoken_text(self, ctx: dict) -> str:
-        """Surface any flagged words so the coordinator has the verbal evidence."""
+        """Surface any flagged words so the coordinator has the verbal evidence.
+
+        The words come from every transcript segment of the scene, not only the
+        segment at the current frame.
+
+        Returns:
+            Sorted, de-duplicated flagged words joined by ``"; "``, or ``""``.
+        """
         flagged = [s for s in ctx["segments"] if s.get("bad_words")]
         if not flagged:
             return ""
@@ -29,6 +38,7 @@ class SpeechAgent(PerceptionAgent):
         return "; ".join(words)
 
     def observe(self, ctx: dict, frame: int) -> Observation:
+        """Report the verbal z-score at *frame*, with flagged words as detail."""
         z = frame_value(ctx, frame, self.col)
         return Observation(
             self.name, self.label, z, z >= ctx["threshold"],

@@ -41,6 +41,8 @@ dev = [
     "pytest>=8",
     "httpx>=0.27",
     "ruff>=0.6",
+    "mypy>=2.4.0",
+    "interrogate>=1.7.0",
 ]
 
 # Not an installable package: modules are imported from the repo root (src.*).
@@ -66,6 +68,22 @@ target-version = "py310"
 extend-exclude = [".venv*", "web"]
 
 [tool.ruff.lint]
-select = ["E", "F", "W", "I", "UP", "B"]
+select = ["E", "F", "W", "I", "UP", "B", "D"]
 # Long lines are prompt text and UI copy; leave them readable.
 ignore = ["E501"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["D"]
+
+[tool.mypy]
+python_version = "3.10"
+files = ["src", "scripts"]
+ignore_missing_imports = true
+
+[tool.interrogate]
+fail-under = 90
+exclude = ["tests", "web", ".venv"]
+verbose = 1

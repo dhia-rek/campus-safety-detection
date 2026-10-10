@@ -9,6 +9,7 @@ export default function VideoPanel({ scene, frame, nFrames, alert }) {
   const [boxes, setBoxes] = useState([]);
   const [dim, setDim]     = useState({ w: 856, h: 480 });
 
+  // `active` guards against a slow response for an old frame overwriting a newer one.
   useEffect(() => {
     if (!scene || !nFrames) { setBoxes([]); return; }
     let active = true;

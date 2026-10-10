@@ -1,5 +1,4 @@
-"""
-Step 3b — Embed object crops with CLIP and save per-scene .npz feature files.
+"""Step 3b — Embed object crops with CLIP and save per-scene .npz feature files.
 
 For each scene sub-directory under crops/<split>/, produces one .npz file
 under features/<split>/ containing:
@@ -20,6 +19,8 @@ Usage
 """
 
 import os
+from collections.abc import Iterator
+from typing import Any
 
 import numpy as np
 import torch
@@ -38,8 +39,14 @@ SUBDIR_FILTER = os.getenv("SUBDIR_FILTER", "").strip()
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def embed_texts_once(model, tokenizer, device: str) -> None:
-    """Write prompts/text_features.npz if it does not already exist."""
+def embed_texts_once(model: Any, tokenizer: Any, device: str) -> None:
+    """Write prompts/text_features.npz if it does not already exist.
+
+    Args:
+        model: CLIP model from ``load_clip``.
+        tokenizer: CLIP tokenizer from ``load_clip``.
+        device: Torch device string.
+    """
     if (PROMPTS_DIR / "text_features.npz").is_file():
         print("text_features.npz already exists — skipping.")
         return
@@ -48,8 +55,14 @@ def embed_texts_once(model, tokenizer, device: str) -> None:
     save_text_features(model, tokenizer, device)
 
 
-def iter_image_folders(split_root: str):
-    """Yield (rel_subdir, [sorted image paths]) for every sub-directory with images."""
+def iter_image_folders(split_root: str) -> Iterator[tuple[str, list[str]]]:
+    """Yield (rel_subdir, [sorted image paths]) for every sub-directory with images.
+
+    Honours SUBDIR_FILTER (exact match on the relative path).
+
+    Args:
+        split_root: Root folder to walk, e.g. ``crops/<split>``.
+    """
     for dirpath, _, files in os.walk(split_root):
         imgs = [
             os.path.join(dirpath, f)
@@ -64,8 +77,22 @@ def iter_image_folders(split_root: str):
         yield rel, sorted(imgs)
 
 
-def embed_split(model, preprocess, device: str) -> None:
-    """Embed all crops for SPLIT and write one .npz per scene folder."""
+def embed_split(model: Any, preprocess: Any, device: str) -> None:
+    """Embed all crops for SPLIT and write one .npz per scene folder.
+
+    Embeddings are L2-normalised so a dot product equals cosine similarity in
+    the score step. Scenes whose .npz already exists are skipped, making
+    reruns resumable. The output name is the relative folder path with ``/``
+    replaced by ``_`` (``root`` for the top level).
+
+    Args:
+        model: CLIP model from ``load_clip``.
+        preprocess: CLIP image preprocessing transform.
+        device: Torch device string.
+
+    Raises:
+        FileNotFoundError: If the crops folder for SPLIT does not exist.
+    """
     split_crops     = os.path.join(str(CROPS_ROOT),    SPLIT)
     split_feats_dir = os.path.join(str(FEATURES_ROOT), SPLIT)
     os.makedirs(split_feats_dir, exist_ok=True)
@@ -112,6 +139,7 @@ def embed_split(model, preprocess, device: str) -> None:
 
 
 def main() -> None:
+    """Load CLIP, ensure text features exist, then embed the split's crops."""
     from src.pipeline.clip_model import load_clip
 
     print(f"Device: {DEVICE}")

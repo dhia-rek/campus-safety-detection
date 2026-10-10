@@ -1,5 +1,4 @@
-"""
-Step −1 — Ingest a film/video clip (.mp4, .avi, .mov…) into the pipeline.
+"""Step −1 — Ingest a film/video clip (.mp4, .avi, .mov…) into the pipeline.
 
 Splits a single video file into the two aligned inputs the pipeline expects:
   1. JPEG frames        → <dataset>/<split>/frames/<scene>/000000.jpg …
@@ -52,6 +51,11 @@ AUDIO_SR = 32000   # PANNs rate; librosa resamples to 16 kHz for Whisper
 
 
 def native_fps(path: str) -> float:
+    """Return the video's native frame rate, or 0.0 if it cannot be determined.
+
+    Args:
+        path: Path to the video file.
+    """
     cap = cv2.VideoCapture(path)
     fps = cap.get(cv2.CAP_PROP_FPS)
     cap.release()
@@ -59,10 +63,26 @@ def native_fps(path: str) -> float:
 
 
 def run(cmd: list[str]) -> None:
+    """Run *cmd* silently (stdout/stderr discarded).
+
+    Raises:
+        subprocess.CalledProcessError: If the command exits non-zero.
+    """
     subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
 
 
 def main() -> None:
+    """Split VIDEO_PATH into JPEG frames and a mono WAV with ffmpeg.
+
+    Frames are numbered from 0 at the chosen FPS so frame ``t`` lines up with
+    audio time ``t / FPS``. The WAV is considered present only if larger than
+    1 KiB, which filters out header-only files.
+    Prints the follow-up commands to run on the new scene.
+
+    Raises:
+        SystemExit: If VIDEO_PATH/SCENE are unset or ffmpeg is not on PATH.
+        FileNotFoundError: If the video file does not exist.
+    """
     if not VIDEO_PATH or not SCENE:
         raise SystemExit("VIDEO_PATH and SCENE are required.")
     if not os.path.isfile(VIDEO_PATH):
