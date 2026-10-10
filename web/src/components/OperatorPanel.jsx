@@ -3,7 +3,7 @@ import {
   Eye, Volume2, MessageSquareText, Brain,
   ShieldAlert, ShieldCheck, RefreshCw,
 } from "lucide-react";
-import { getDecision } from "../api.js";
+import { executeDecision, getDecision } from "../api.js";
 
 // The right-rail "brain": live threat status, live per-agent signal meters, and
 // the coordinator's verdict (auto-runs when an alert begins, plus manual re-run).
@@ -46,17 +46,21 @@ export default function OperatorPanel({ scene, frame, threshold, signals, avail 
   const [loading, setLoading]   = useState(false);
   const prevAlert = useRef(false);
 
-  const run = async () => {
+  // `notify=false` is a dry run (decision only); `notify=true` also fires the action agents.
+  const run = async (notify = false) => {
     if (!scene) return;
     setLoading(true);
-    try { setDecision(await getDecision(scene, frame, threshold)); }
+    try {
+      const call = notify ? executeDecision : getDecision;
+      setDecision(await call(scene, frame, threshold));
+    }
     catch (e) { setDecision({ error: String(e) }); }
     finally { setLoading(false); }
   };
 
   // Auto-run on the rising edge of an alert (don't hammer it every frame).
   useEffect(() => {
-    if (alert && !prevAlert.current) run();
+    if (alert && !prevAlert.current) run(true);
     prevAlert.current = alert;
   }, [alert]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -92,14 +96,17 @@ export default function OperatorPanel({ scene, frame, threshold, signals, avail 
       <div className="panel-block">
         <div className="coord-head">
           <h3><Brain size={15} /> Coordinator</h3>
-          <button onClick={run} disabled={!scene || loading}>
+          <button onClick={() => run(false)} disabled={!scene || loading}>
             <RefreshCw size={13} className={loading ? "spin" : ""} /> {loading ? "…" : "run"}
+          </button>
+          <button onClick={() => run(true)} disabled={!scene || loading} title="Run and send alerts (Telegram / e-mail / webhook)">
+            notify
           </button>
         </div>
 
         {decision?.error && <div className="banner error">{decision.error}</div>}
         {!decision && !loading && (
-          <p className="muted small">Runs automatically on an alert — or click <b>run</b>.</p>
+          <p className="muted small">Notifies automatically when an alert begins — click <b>run</b> for analysis only or <b>notify</b> to send alerts again.</p>
         )}
         {loading && <p className="muted small">Analyzing frame {frame}…</p>}
 

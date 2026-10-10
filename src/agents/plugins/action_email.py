@@ -15,7 +15,7 @@ Put it in SMTP_PASS (16 characters, no spaces).
 Environment
 -----------
 SMTP_HOST / SMTP_PORT / SMTP_USER / SMTP_PASS : SMTP credentials
-EMAIL_TO         : recipient            (default "dhia.rekik11@gmail.com")
+EMAIL_TO         : recipient (required; the email action is disabled when unset)
 EMAIL_FROM       : sender               (default = SMTP_USER)
 EMAIL_SEVERITIES : severities that fire it (default "low,medium,high")
 EMAIL_CLIP       : attach a video clip of the footage (default "1")
@@ -23,6 +23,7 @@ EMAIL_CLIP       : attach a video clip of the footage (default "1")
 
 from __future__ import annotations
 
+import html
 import os
 import shutil
 import smtplib
@@ -42,7 +43,7 @@ SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER", "").strip()
 SMTP_PASS = os.getenv("SMTP_PASS", "").strip()
-EMAIL_TO  = os.getenv("EMAIL_TO", "dhia.rekik11@gmail.com").strip()
+EMAIL_TO  = os.getenv("EMAIL_TO", "").strip()  # no default: never send to a baked-in address
 EMAIL_FROM = os.getenv("EMAIL_FROM", SMTP_USER or EMAIL_TO).strip()
 EMAIL_SEVERITIES = {
     s.strip() for s in os.getenv("EMAIL_SEVERITIES", "low,medium,high").split(",") if s.strip()
@@ -58,7 +59,10 @@ SEV_STYLE = {
     "none":   ("✅", "#27ae60"),
 }
 
-_last_email_ts = 0.0
+_last_email_ts = 0.0  # time of the last *successful* send
+_in_flight = False  # a send is running; blocks duplicates until its outcome is known
+_state_lock = threading.Lock()
+_warned_unconfigured = False
 
 
 def _frames(scene: str) -> list[Path]:
@@ -126,9 +130,11 @@ def _html(scene: str, frame: int, decision: Decision, has_frame: bool) -> str:
             itself is attached by the caller.
 
     Returns:
-        HTML string. Values are interpolated without escaping.
+        HTML string. All interpolated text (scene, severity, report, action) is
+        HTML-escaped, since the report can come from an LLM.
     """
     icon, color = SEV_STYLE.get(decision.severity, SEV_STYLE["medium"])
+    esc = html.escape
     img = (f'<img src="cid:frame" alt="incident frame" '
            f'style="width:100%;max-width:520px;border-radius:8px;border:2px solid {color};margin-top:12px"/>'
            ) if has_frame else ""
@@ -141,19 +147,38 @@ def _html(scene: str, frame: int, decision: Decision, has_frame: bool) -> str:
   <div style="border:1px solid #e3e3e3;border-top:none;padding:18px 20px;border-radius:0 0 10px 10px">
     <p style="margin:0 0 10px">
       <span style="background:{color};color:#fff;padding:3px 12px;border-radius:20px;
-      font-weight:bold;text-transform:uppercase;font-size:13px">{icon} {decision.severity}</span>
+      font-weight:bold;text-transform:uppercase;font-size:13px">{icon} {esc(str(decision.severity))}</span>
     </p>
     <table style="font-size:14px;line-height:1.7">
-      <tr><td><b>Scene</b></td><td style="padding-left:14px">{scene}</td></tr>
-      <tr><td><b>Frame</b></td><td style="padding-left:14px">{frame}</td></tr>
-      <tr><td><b>Incident</b></td><td style="padding-left:14px">{decision.is_incident}</td></tr>
+      <tr><td><b>Scene</b></td><td style="padding-left:14px">{esc(str(scene))}</td></tr>
+      <tr><td><b>Frame</b></td><td style="padding-left:14px">{esc(str(frame))}</td></tr>
+      <tr><td><b>Incident</b></td><td style="padding-left:14px">{esc(str(decision.is_incident))}</td></tr>
     </table>
-    <p style="font-size:14px"><b>🧠 Report.</b> {decision.report}</p>
-    <p style="font-size:14px"><b>➡️ Action.</b> {decision.action}</p>
+    <p style="font-size:14px"><b>🧠 Report.</b> {esc(str(decision.report))}</p>
+    <p style="font-size:14px"><b>➡️ Action.</b> {esc(str(decision.action))}</p>
     {img}
     <p style="font-size:12px;color:#888;margin-top:14px">🎞️ Footage clip attached · Campus Safety AI — ECE</p>
   </div>
 </div>"""
+
+
+def _send_and_record(scene: str, frame: int, decision: Decision) -> dict:
+    """Run ``_send_email`` and update the cooldown state from its outcome.
+
+    The cooldown starts only after a successful send, so a failed send can be
+    retried immediately. ``_in_flight`` stops a second thread from starting
+    while this one is still running.
+    """
+    global _last_email_ts, _in_flight
+    try:
+        result = _send_email(scene, frame, decision)
+        with _state_lock:
+            if result.get("sent"):
+                _last_email_ts = time.time()
+        return result
+    finally:
+        with _state_lock:
+            _in_flight = False
 
 
 def _send_email(scene: str, frame: int, decision: Decision) -> dict:
@@ -168,39 +193,39 @@ def _send_email(scene: str, frame: int, decision: Decision) -> dict:
     """
     if not (SMTP_USER and SMTP_PASS):
         return {"sent": False, "skipped": "SMTP_USER/SMTP_PASS not set"}
-    icon, _ = SEV_STYLE.get(decision.severity, SEV_STYLE["medium"])
-    fpath = _frame_path(scene, frame)
-
-    msg = EmailMessage()
-    msg["Subject"] = f"{icon} [Campus Safety] {decision.severity.upper()} incident — {scene} frame {frame}"
-    msg["From"] = EMAIL_FROM
-    msg["To"] = EMAIL_TO
-    msg.set_content(
-        f"CCTV ANOMALY ALERT\nScene: {scene} | Frame: {frame} | Severity: {decision.severity}\n"
-        f"Report: {decision.report}\nAction: {decision.action}"
-    )
-    msg.add_alternative(_html(scene, frame, decision, has_frame=bool(fpath)), subtype="html")
-
-    # inline frame image (referenced by cid:frame in the HTML)
-    if fpath:
-        with open(fpath, "rb") as f:
-            cast(Any, msg.get_payload())[1].add_related(f.read(), maintype="image", subtype="jpeg", cid="frame")
-
-    # attach a short video clip of the footage around the incident
-    if EMAIL_CLIP:
-        clip = _build_clip(scene, frame)
-        if clip:
-            with open(clip, "rb") as f:
-                msg.add_attachment(f.read(), maintype="video", subtype="mp4",
-                                   filename=f"{scene}_incident.mp4")
-
     try:
+        icon, _ = SEV_STYLE.get(decision.severity, SEV_STYLE["medium"])
+        fpath = _frame_path(scene, frame)
+
+        msg = EmailMessage()
+        msg["Subject"] = f"{icon} [Campus Safety] {decision.severity.upper()} incident — {scene} frame {frame}"
+        msg["From"] = EMAIL_FROM
+        msg["To"] = EMAIL_TO
+        msg.set_content(
+            f"CCTV ANOMALY ALERT\nScene: {scene} | Frame: {frame} | Severity: {decision.severity}\n"
+            f"Report: {decision.report}\nAction: {decision.action}"
+        )
+        msg.add_alternative(_html(scene, frame, decision, has_frame=bool(fpath)), subtype="html")
+
+        # inline frame image (referenced by cid:frame in the HTML)
+        if fpath:
+            with open(fpath, "rb") as f:
+                cast(Any, msg.get_payload())[1].add_related(f.read(), maintype="image", subtype="jpeg", cid="frame")
+
+        # attach a short video clip of the footage around the incident
+        if EMAIL_CLIP:
+            clip = _build_clip(scene, frame)
+            if clip:
+                with open(clip, "rb") as f:
+                    msg.add_attachment(f.read(), maintype="video", subtype="mp4",
+                                       filename=f"{scene}_incident.mp4")
+
         with smtplib.SMTP(SMTP_HOST, SMTP_PORT, timeout=NETWORK_TIMEOUT_SEC) as s:
             s.starttls()
             s.login(SMTP_USER, SMTP_PASS)
             s.send_message(msg)
         return {"sent": True, "to": EMAIL_TO}
-    except Exception as exc:
+    except Exception as exc:  # message-build, attachment, or SMTP failure must not crash the worker thread
         print(f"[email] send failed: {exc}")
         return {"sent": False, "reason": str(exc)}
 
@@ -217,21 +242,30 @@ class EmailAction(ActionAgent):
     def handle(self, decision: Decision, observations: list[Observation], ctx: dict) -> dict:
         """Queue an alert e-mail for an incident in ``EMAIL_SEVERITIES``.
 
-        The cooldown starts when the e-mail is queued, not when it is delivered,
-        so a failed send still suppresses further e-mails for ``COOLDOWN_SEC``.
+        The cooldown starts only after a *successful* send, so a failed send can
+        be retried at once. While a send is in flight further e-mails are skipped.
+        If ``EMAIL_TO`` is unset the action is disabled (one log line, then a
+        ``skipped`` result).
 
         Returns:
             ``{"queued": True, "to": ...}`` or ``{"sent": False, "skipped": reason}``.
         """
-        global _last_email_ts
+        global _in_flight, _warned_unconfigured
+        if not EMAIL_TO:
+            if not _warned_unconfigured:
+                _warned_unconfigured = True
+                print("[email] disabled: EMAIL_TO is not set (set EMAIL_TO, SMTP_USER and SMTP_PASS to enable it)")
+            return {"sent": False, "skipped": "EMAIL_TO not set"}
         if not decision.is_incident or decision.severity not in EMAIL_SEVERITIES:
             return {"sent": False, "skipped": "no incident / below threshold"}
-        now = time.time()
-        if now - _last_email_ts < COOLDOWN_SEC:
-            return {"sent": False, "skipped": "cooldown"}
+        with _state_lock:
+            if _in_flight:
+                return {"sent": False, "skipped": "send in progress"}
+            if time.time() - _last_email_ts < COOLDOWN_SEC:
+                return {"sent": False, "skipped": "cooldown"}
+            _in_flight = True
         # Send in the background so the dashboard never freezes while the
         # frame + footage clip are built and the SMTP handshake runs.
-        _last_email_ts = now
         scene, frame = ctx.get("scene", "?"), ctx.get("frame", -1)
-        threading.Thread(target=_send_email, args=(scene, frame, decision), daemon=True).start()
+        threading.Thread(target=_send_and_record, args=(scene, frame, decision), daemon=True).start()
         return {"queued": True, "to": EMAIL_TO}

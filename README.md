@@ -86,7 +86,8 @@ Verify endpoints with `curl`:
 curl http://localhost:8000/api/scenes
 
 # Trigger demo coordinator decision
-curl http://localhost:8000/api/decision/demo_incident
+curl http://localhost:8000/api/decision/demo_incident            # dry run: decision only, sends nothing
+curl -X POST http://localhost:8000/api/decision/demo_incident/execute   # also runs the actions (alerts)
 
 # Send a manual test alert
 curl -X POST http://localhost:8000/api/alert \
@@ -114,6 +115,15 @@ bash scripts/run_pipeline.sh quick
 ```
 *Note: A dataset containing video clips and corresponding `.wav` audio files is required.*
 
+To inspect a separate RLVS `Violence` folder and rank a sample of clips by violence-sound score,
+pass its path or set `RLVS_VIOLENCE_DIR` (PANNs/ML dependencies must be installed):
+
+```bash
+uv run python scripts/scan_audio_clips.py /path/to/Violence
+# or
+RLVS_VIOLENCE_DIR=/path/to/Violence uv run python scripts/scan_audio_clips.py
+```
+
 ## Configuration
 
 Set configuration parameters via environment variables or a `.env` file (see `.env.example`):
@@ -128,7 +138,7 @@ Set configuration parameters via environment variables or a `.env` file (see `.e
 | `OLLAMA_MODEL` | `llama3.1:8b` | Model used by coordinator agent for incident analysis |
 | `INCIDENT_WEBHOOK_URL`| *None* | Webhook URL (e.g. n8n or Make) for high-severity notifications |
 | `ESCALATE_SEVERITIES` | `high` | Incident severities that trigger webhook escalation |
-| `EMAIL_TO` | *None* | Destination address for email notifications |
+| `EMAIL_TO` | *None* | Recipient for email alerts. **Required**: when unset the email action is disabled and logs why |
 | `SMTP_USER` | *None* | SMTP authentication user / email address |
 | `SMTP_PASS` | *None* | SMTP authentication password / app password |
 | `EMAIL_SEVERITIES` | `low,medium,high` | Comma-separated severities that trigger email alerts |

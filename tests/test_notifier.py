@@ -31,11 +31,13 @@ def test_telegram_notifier_with_token_uses_subscribers_file(monkeypatch, tmp_pat
 
     calls = []
 
-    def fake_post(url, data=None, files=None, timeout=None):
-        calls.append({"url": url, "chat_id": data["chat_id"], "timeout": timeout, "files": bool(files)})
+    def fake_post(url, data=None, files=None, timeout=None, allow_redirects=True):
+        calls.append({"url": url, "chat_id": data["chat_id"], "timeout": timeout,
+                      "files": bool(files), "allow_redirects": allow_redirects})
 
         class _Resp:
             status_code = 200
+            ok = True
 
         return _Resp()
 
@@ -49,6 +51,7 @@ def test_telegram_notifier_with_token_uses_subscribers_file(monkeypatch, tmp_pat
     assert len(calls) == 2
     assert all(token in c["url"] for c in calls)
     assert {c["chat_id"] for c in calls} == {111, 222}
+    assert all(c["allow_redirects"] is False for c in calls)
 
 
 def test_telegram_notifier_error_log_does_not_leak_token(monkeypatch, tmp_path, capsys):

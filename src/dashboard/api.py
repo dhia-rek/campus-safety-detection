@@ -233,13 +233,14 @@ def agents_catalog() -> dict:
     return {"agents": registry.catalog()}
 
 
-@app.get("/api/decision/{scene}")
-def coordinator_decision(scene: str, frame: int | None = None, threshold: float = 1.0) -> dict:
-    """Run the full agent pipeline (perception, coordinator, actions) on one frame.
+def _decide(scene: str, frame: int | None, threshold: float, run_actions: bool) -> dict:
+    """Load a scene and run the agent pipeline on one frame.
 
-    Defaults to the scene's peak fused frame.
-
-    Note this runs real action agents, so it can send alerts.
+    Args:
+        scene: Scene id.
+        frame: Frame index; None means the scene's peak fused frame.
+        threshold: Z-score alert threshold.
+        run_actions: False for a dry run (no action agent is called).
 
     Raises:
         HTTPException: 404 if the scene has no fused scores.
@@ -253,7 +254,33 @@ def coordinator_decision(scene: str, frame: int | None = None, threshold: float 
         raise HTTPException(404, str(exc)) from exc
 
     f = peak_frame(ctx) if frame is None else frame
-    return analyze_frame(ctx, f)
+    return analyze_frame(ctx, f, run_actions=run_actions)
+
+
+@app.get("/api/decision/{scene}")
+def coordinator_decision(scene: str, frame: int | None = None, threshold: float = 1.0) -> dict:
+    """Dry run: perception and coordinator only, with no side effects.
+
+    Safe to call repeatedly (GET must not send alerts). ``actions`` is always
+    empty; use ``POST /api/decision/{scene}/execute`` to also run the actions.
+    Defaults to the scene's peak fused frame.
+
+    Raises:
+        HTTPException: 404 if the scene has no fused scores.
+    """
+    return _decide(scene, frame, threshold, run_actions=False)
+
+
+@app.post("/api/decision/{scene}/execute")
+def coordinator_decision_execute(scene: str, frame: int | None = None, threshold: float = 1.0) -> dict:
+    """Run the full agent pipeline including the action agents (Telegram, e-mail, webhook...).
+
+    Unlike the GET dry run this can send real alerts.
+
+    Raises:
+        HTTPException: 404 if the scene has no fused scores.
+    """
+    return _decide(scene, frame, threshold, run_actions=True)
 
 
 @app.get("/api/telegram/status")
