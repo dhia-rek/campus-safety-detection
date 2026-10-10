@@ -3,6 +3,9 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
 
 
 def _probe_demo_mode(env: dict) -> tuple[bool, str, str]:
@@ -14,7 +17,7 @@ def _probe_demo_mode(env: dict) -> tuple[bool, str, str]:
     )
     proc = subprocess.run(
         [sys.executable, "-c", code],
-        cwd="/home/debian/code/campus-safety-detection",
+        cwd=ROOT,
         env=env,
         check=True,
         capture_output=True,
