@@ -103,8 +103,8 @@ def main() -> None:
     A frame's verbal_score is the largest bad-word count among the Whisper
     segments covering its timestamp (not a sum, so overlapping segments do not
     double count). Audio is loaded with librosa at 16 kHz and passed to Whisper
-    as an array to avoid a system ffmpeg dependency; fp16 is off because the
-    model runs on CPU. Heavy deps (librosa, whisper) are imported lazily.
+    as an array to avoid a system ffmpeg dependency; fp16 is off for
+    compatibility (it is only supported on GPU). Heavy deps (librosa, whisper) are imported lazily.
 
     Raises:
         RuntimeError: If WAV_PATH/SCENE are unset.

@@ -84,7 +84,7 @@ def _build_clip(scene: str, frame: int, window: int = CLIP_WINDOW_FRAMES, fps: i
     Args:
         scene: Scene id.
         frame: Incident frame position.
-        window: Frames to include on each side of *frame*.
+        window: Frames of footage before *frame* and after it (the end is exclusive).
         fps: Frame rate of the resulting clip.
 
     Returns:

@@ -1,6 +1,6 @@
 """Scan RLVS violence clips and rank them by violence-sound (PANNs) and loudness.
 
-This lets us can pick clips whose own audio is loud/clear (screams, impacts, shouting).
+This lets us pick clips whose own audio is loud/clear (screams, impacts, shouting).
 """
 import glob
 import os
