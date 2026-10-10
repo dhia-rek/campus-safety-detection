@@ -1,7 +1,7 @@
 """Alert notifier seam: real Telegram, or a mock for demo mode and tests.
 
-``get_notifier()`` returns the mock when DEMO_MODE=1 (src.paths) or when no
-TELEGRAM_TOKEN is set and MOCK_NOTIFIER=1. The mock never touches the network;
+``get_notifier()`` returns the mock when DEMO_MODE=1 (src.paths), else the real
+Telegram notifier. The mock never touches the network;
 it records messages in memory so the demo and tests can inspect them.
 """
 
