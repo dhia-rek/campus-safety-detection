@@ -1,5 +1,4 @@
-"""
-Step 5 — Score audio for violence using pretrained PANNs CNN14.
+"""Step 5 — Score audio for violence using pretrained PANNs CNN14.
 
 Reads a .wav file, runs PANNs in 1-second windows (0.5s hop), sums the
 probabilities of violence-related AudioSet classes listed in
@@ -38,8 +37,19 @@ FPS           = float(os.getenv("FPS", "24"))
 DATASET_SPLIT = os.getenv("DATASET_SPLIT", "testing").strip().lower()
 
 
-def load_target_class_indices(label_list):
-    """Map names in violence_audio_classes.txt to PANNs label indices."""
+def load_target_class_indices(label_list: list[str]) -> tuple[list[int], list[str]]:
+    """Map names in violence_audio_classes.txt to PANNs label indices.
+
+    Unknown names are reported with a warning and skipped rather than failing,
+    so a typo in the class file degrades the score instead of aborting the run.
+
+    Args:
+        label_list: The 527 AudioSet label names, indexed by PANNs class id.
+
+    Returns:
+        Tuple ``(indices, names)`` of the matched class ids and their names,
+        in the order they appear in the class file.
+    """
     wanted = [ln.strip() for ln in CLASS_FILE.read_text().splitlines() if ln.strip()]
     name_to_idx = {name: i for i, name in enumerate(label_list)}
     matched, missing = [], []
@@ -53,8 +63,20 @@ def load_target_class_indices(label_list):
     return matched, [label_list[i] for i in matched]
 
 
-def slice_windows(audio, sr):
-    """Slice mono audio into (N, win_samples) with HOP_SEC stride; tail-pad with zeros."""
+def slice_windows(audio: np.ndarray, sr: int) -> np.ndarray:
+    """Slice mono audio into overlapping fixed-length windows.
+
+    Windows are WIN_SEC long with a HOP_SEC stride (50% overlap), so a short
+    event is seen by at least two windows. Audio shorter than one window is
+    zero-padded at the end; a trailing remainder shorter than the hop is dropped.
+
+    Args:
+        audio: 1-D mono waveform.
+        sr: Sample rate of ``audio`` in Hz.
+
+    Returns:
+        float32 array of shape ``(N, int(WIN_SEC * sr))``.
+    """
     win = int(WIN_SEC * sr)
     hop = int(HOP_SEC * sr)
     if len(audio) < win:
@@ -67,7 +89,19 @@ def slice_windows(audio, sr):
     return out
 
 
-def main():
+def main() -> None:
+    """Score a .wav for violence-like sounds and write ``<SCENE>_audio.csv``.
+
+    The per-window score is the SUM of PANNs clipwise probabilities over the
+    violence classes (so it can exceed 1). Each video frame takes the score of
+    the window whose centre is nearest in time, aligning audio to FPS.
+    Heavy deps (librosa, panns_inference) are imported lazily so the module
+    can be imported without them.
+
+    Raises:
+        RuntimeError: If WAV_PATH/SCENE are unset or no class names match.
+        FileNotFoundError: If the WAV file does not exist.
+    """
     if not WAV_PATH or not SCENE:
         raise RuntimeError("WAV_PATH and SCENE environment variables are required.")
     if not os.path.isfile(WAV_PATH):

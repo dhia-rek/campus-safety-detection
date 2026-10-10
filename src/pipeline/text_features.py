@@ -1,5 +1,4 @@
-"""
-Step 3a — Encode text prompts with CLIP and save to prompts/text_features.npz.
+"""Step 3a — Encode text prompts with CLIP and save to prompts/text_features.npz.
 
 Reads normal.txt and abnormal.txt from the prompts directory and produces
 a single .npz file containing:
@@ -14,6 +13,7 @@ Usage
     python -m src.pipeline.text_features
 """
 
+from typing import Any
 
 import numpy as np
 import torch
@@ -30,8 +30,21 @@ def read_lines(path: str) -> list[str]:
         return [line.strip() for line in f if line.strip()]
 
 
-def encode_prompts(model, tokenizer, device: str) -> tuple[np.ndarray, int, int]:
-    """Encode normal.txt + abnormal.txt → (L2-normalised feats, n_normal, n_abnormal)."""
+def encode_prompts(model: Any, tokenizer: Any, device: str) -> tuple[np.ndarray, int, int]:
+    """Encode normal.txt + abnormal.txt with CLIP.
+
+    Normal prompts come first in the output, then abnormal, so the counts
+    returned can be used to split the array back apart.
+
+    Args:
+        model: CLIP model from ``load_clip``.
+        tokenizer: CLIP tokenizer from ``load_clip``.
+        device: Torch device string.
+
+    Returns:
+        Tuple ``(feats, n_normal, n_abnormal)`` where ``feats`` is a float32
+        ``(N, 512)`` array of L2-normalised embeddings.
+    """
     normals   = read_lines(str(PROMPTS_DIR / "normal.txt"))
     abnormals = read_lines(str(PROMPTS_DIR / "abnormal.txt"))
     print(f"Normal prompts: {len(normals)} | Abnormal prompts: {len(abnormals)}")
@@ -47,13 +60,21 @@ def encode_prompts(model, tokenizer, device: str) -> tuple[np.ndarray, int, int]
     return np.vstack(all_feats).astype(np.float32), len(normals), len(abnormals)
 
 
-def save_text_features(model, tokenizer, device: str) -> None:
+def save_text_features(model: Any, tokenizer: Any, device: str) -> None:
+    """Encode the prompts and save them (compressed) to OUT_PATH.
+
+    Args:
+        model: CLIP model from ``load_clip``.
+        tokenizer: CLIP tokenizer from ``load_clip``.
+        device: Torch device string.
+    """
     feats, n_normal, n_abnormal = encode_prompts(model, tokenizer, device)
     np.savez_compressed(OUT_PATH, feats=feats, n_normal=n_normal, n_abnormal=n_abnormal)
     print(f"Saved text features → {OUT_PATH}")
 
 
 def main() -> None:
+    """Load CLIP on GPU if available and write prompts/text_features.npz."""
     from src.pipeline.clip_model import load_clip
 
     device = "cuda" if torch.cuda.is_available() else "cpu"

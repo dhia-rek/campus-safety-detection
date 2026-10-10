@@ -1,5 +1,4 @@
-"""
-Debug visualiser — replay a scored scene with an overlaid live graph.
+"""Debug visualiser — replay a scored scene with an overlaid live graph.
 
 Opens two windows simultaneously:
   1. OpenCV frame window with NORMAL/ANOMALY label + score overlay.
@@ -35,6 +34,15 @@ GRAPH_WINDOW = 200  # number of frames shown in the rolling graph
 
 
 def main() -> None:
+    """Replay the scene frames with a live score graph and anomaly overlay.
+
+    Frames are matched to scores by their position in the sorted file list
+    (enumeration index), not by filename; frames missing from the CSV score 0.
+    A frame is flagged ANOMALY when its smoothed score exceeds ANOMALY_TH.
+
+    Raises:
+        FileNotFoundError: If no ``*.jpg`` frames exist in FRAME_DIR.
+    """
     df = pd.read_csv(SCORE_CSV)
     frame_to_score = dict(zip(df["frame"], df["smoothed_score"], strict=True))
 

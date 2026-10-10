@@ -1,5 +1,4 @@
-"""
-Step 4 — Compute per-frame bullying scores from CLIP embeddings.
+"""Step 4 — Compute per-frame bullying scores from CLIP embeddings.
 
 Algorithm
 ---------
@@ -40,7 +39,15 @@ TEXT_NPZ     = str(PROMPTS_DIR / "text_features.npz")
 def load_text_features() -> tuple[np.ndarray, np.ndarray]:
     """Load normal and abnormal CLIP text embeddings from disk.
 
-    Returns (normal_feats, abnormal_feats) each of shape (N, 512).
+    Looks in prompts/text_features.npz first, then falls back to
+    features/text_features.npz.
+
+    Returns:
+        ``(normal_feats, abnormal_feats)``, each of shape ``(N, 512)``, split
+        using the ``n_normal`` / ``n_abnormal`` counts stored in the file.
+
+    Raises:
+        FileNotFoundError: If neither location has the file.
     """
     fallback = os.path.join(str(FEATURES_ROOT), "text_features.npz")
     path = TEXT_NPZ if os.path.isfile(TEXT_NPZ) else fallback
@@ -65,8 +72,18 @@ def compute_object_scores(
 ) -> np.ndarray:
     """Return a contrastive bullying score for each object crop embedding.
 
-    img_feats : (N_obj, D) — L2-normalised CLIP image embeddings
-    Returns   : (N_obj,)  — higher = more anomalous
+    The score is ``max cosine-sim to abnormal prompts - max cosine-sim to
+    normal prompts``. Subtracting the best normal match cancels generic scene
+    similarity, so only crops that look more like an abnormal description than
+    any normal one score positive.
+
+    Args:
+        img_feats: ``(N_obj, D)`` L2-normalised CLIP image embeddings.
+        normal_feats: ``(N_normal, D)`` normalised text embeddings.
+        abnormal_feats: ``(N_abnormal, D)`` normalised text embeddings.
+
+    Returns:
+        ``(N_obj,)`` array; higher means more anomalous.
     """
     sim_normal   = img_feats @ normal_feats.T    # (N_obj, N_normal)
     sim_abnormal = img_feats @ abnormal_feats.T  # (N_obj, N_abnormal)
@@ -80,10 +97,20 @@ def process_split(
 ) -> np.ndarray:
     """Score all scenes in *split* and write CSV outputs.
 
-    If *norm_mu* / *norm_std* are given, frame scores are Z-score normalised
-    before smoothing (used for the testing split after calibration on training).
+    Per scene: object scores -> per-frame MAX over objects -> optional z-score
+    -> Gaussian smoothing with SMOOTH_SIGMA. Smoothing (a wide ~21-frame
+    kernel) suppresses single-frame detector flicker. Only frames that have at
+    least one crop appear in the output, so the frame index can have gaps.
 
-    Returns a flat array of all raw frame-level scores (used for calibration).
+    Args:
+        split: ``"training"`` or ``"testing"``.
+        norm_mu: Calibration mean (from training); enables z-scoring when set.
+        norm_std: Calibration std; used together with ``norm_mu``.
+
+    Returns:
+        Flat array of all frame-level scores BEFORE smoothing (pre-normalisation
+        when no calibration is given; post-normalisation otherwise), used by
+        the caller to compute calibration statistics.
     """
     in_dir      = os.path.join(str(FEATURES_ROOT), split)
     out_obj_dir = os.path.join(str(SCORES_ROOT), split, "objects")
@@ -115,6 +142,7 @@ def process_split(
         frame_scores = obj_df.groupby("frame")["object_score"].max()
 
         if norm_mu is not None:
+            assert norm_std is not None, "norm_std is required with norm_mu"
             frame_scores = (frame_scores - norm_mu) / (norm_std + EPS)
 
         smoothed = gaussian_filter1d(frame_scores.values, sigma=SMOOTH_SIGMA)
@@ -135,6 +163,11 @@ def process_split(
 
 
 def main() -> None:
+    """Score training (if present) to calibrate, then score testing.
+
+    The training split's mean/std of frame scores are used to z-score the
+    testing split. Without training features the testing split is scored raw.
+    """
     training_dir = os.path.join(str(FEATURES_ROOT), "training")
     has_training = os.path.isdir(training_dir) and any(
         f.endswith(".npz") for f in os.listdir(training_dir)

@@ -1,6 +1,7 @@
-"""
-WhatsApp action agent — sends a WhatsApp message on a real incident, via the free
-CallMeBot API (no paid account needed; it only messages YOUR own registered number).
+"""WhatsApp action agent: send a WhatsApp message on a real incident.
+
+Uses the free CallMeBot API (no paid account needed; it only messages YOUR own
+registered number).
 
 Drop-in action plugin: adding this file adds a "whatsapp" capability to the runtime
 with no core change. No-ops safely when not configured.
@@ -41,6 +42,12 @@ _last_wa_ts = 0.0
 
 
 def _send_whatsapp(text: str) -> dict:
+    """Send *text* through the CallMeBot HTTP API.
+
+    Returns:
+        ``{"sent": <http ok>, "status": code}``; ``{"sent": False, "skipped": ...}``
+        if phone/key are unset; ``{"sent": False, "reason": ...}`` on request error.
+    """
     if not (WHATSAPP_PHONE and CALLMEBOT_APIKEY):
         return {"sent": False, "skipped": "WHATSAPP_PHONE/CALLMEBOT_APIKEY not set"}
     url = (
@@ -59,12 +66,22 @@ def _send_whatsapp(text: str) -> dict:
 
 @register
 class WhatsAppAction(ActionAgent):
+    """Action agent that sends a WhatsApp message for any configured severity."""
+
     name        = "whatsapp"
     label       = "WhatsApp alert"
     tier        = "starter"
     description = "Sends a WhatsApp message to your number on a real incident (via CallMeBot)."
 
     def handle(self, decision: Decision, observations: list[Observation], ctx: dict) -> dict:
+        """Send a WhatsApp alert for an incident whose severity is in ``WHATSAPP_SEVERITIES``.
+
+        Subject to a ``COOLDOWN_SEC`` cooldown, which only restarts after a
+        successful send.
+
+        Returns:
+            The ``_send_whatsapp`` result, or ``{"sent": False, "skipped": reason}``.
+        """
         global _last_wa_ts
         if not decision.is_incident or decision.severity not in WHATSAPP_SEVERITIES:
             return {"sent": False, "skipped": "no incident / below threshold"}

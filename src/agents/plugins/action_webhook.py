@@ -1,5 +1,4 @@
-"""
-Webhook action agent — automation hook (n8n / Make / Zapier).
+"""Webhook action agent — automation hook (n8n / Make / Zapier).
 
 When an incident reaches one of ESCALATE_SEVERITIES, the decision is POSTed to
 INCIDENT_WEBHOOK_URL so a no-code workflow tool can fan out the response
@@ -30,12 +29,22 @@ ESCALATE_SEVERITIES  = {
 
 @register
 class WebhookAction(ActionAgent):
+    """Action agent that POSTs escalated incidents to a workflow webhook."""
+
     name        = "webhook"
     label       = "Automation webhook (n8n)"
     tier        = "pro"
     description = "POSTs high-severity incidents to an external no-code automation flow."
 
     def handle(self, decision: Decision, observations: list[Observation], ctx: dict) -> dict:
+        """POST the decision and observations to ``INCIDENT_WEBHOOK_URL``.
+
+        Returns:
+            ``{"dispatched": True}`` on success, otherwise ``{"dispatched": False,
+            "reason": ...}`` (unset URL, severity not escalated, or request
+            error). Only the request's connection errors are caught; the HTTP
+            status of the response is not checked.
+        """
         if not INCIDENT_WEBHOOK_URL:
             return {"dispatched": False, "reason": "no INCIDENT_WEBHOOK_URL set"}
         if decision.severity not in ESCALATE_SEVERITIES:

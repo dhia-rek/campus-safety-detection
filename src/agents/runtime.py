@@ -1,5 +1,4 @@
-"""
-The RUNTIME — the agent-agnostic core loop.
+"""The RUNTIME — the agent-agnostic core loop.
 
 This is the whole orchestration, and notice it names ZERO concrete agents:
 it asks the registry for whoever is registered + enabled, runs them in the
@@ -24,6 +23,14 @@ def analyze_frame(ctx: dict, frame: int) -> dict:
 
     Returns a JSON-ready dict: the frame, each agent's observation, the brain's
     decision, and what each action agent did.
+
+    Args:
+        ctx: Scene context from ``load_scene_context``. It is copied, not mutated.
+        frame: Frame index to analyse.
+
+    Returns:
+        Dict with ``scene``, ``frame``, ``observations`` (list of dicts),
+        ``decision`` (dict) and ``actions`` (action-agent name → its result).
     """
     ctx = {**ctx, "frame": frame}
 
@@ -53,6 +60,18 @@ def analyze_frame(ctx: dict, frame: int) -> dict:
 
 
 def analyze_peak(scene: str, split: str = "testing", threshold: float = 1.0) -> dict:
-    """Convenience: load a scene and analyse its peak (most-likely-incident) frame."""
+    """Convenience: load a scene and analyse its peak (most-likely-incident) frame.
+
+    Args:
+        scene: Scene id.
+        split: Dataset split (default ``"testing"``).
+        threshold: Z-score alert threshold.
+
+    Returns:
+        The result dict of ``analyze_frame``.
+
+    Raises:
+        FileNotFoundError: If the scene has no fused scores.
+    """
     ctx = load_scene_context(scene, split, threshold)
     return analyze_frame(ctx, peak_frame(ctx))

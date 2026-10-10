@@ -33,7 +33,24 @@ RUN = ROOT / "demo_data" / "runtime"
 SCORES = RUN / "scores" / "testing"
 
 
-def figure(d: ImageDraw.ImageDraw, x: float, y: float, color, swing: float = 0.0, arms_up: bool = False):
+def figure(
+    d: ImageDraw.ImageDraw,
+    x: float,
+    y: float,
+    color: tuple[int, int, int],
+    swing: float = 0.0,
+    arms_up: bool = False,
+) -> None:
+    """Draw one stick figure (head, torso, legs, arms) onto *d*.
+
+    Args:
+        d: PIL drawing context.
+        x: Horizontal centre of the figure.
+        y: Ground line (feet are drawn around y+8).
+        color: RGB colour of the figure.
+        swing: Limb swing offset in px; animates walking or flailing.
+        arms_up: Raise the arms (used for the scuffle).
+    """
     d.ellipse([x - 7, y - 40, x + 7, y - 26], fill=color)
     d.line([x, y - 26, x, y - 8], fill=color, width=4)
     d.line([x, y - 8, x - 6 + swing, y + 8], fill=color, width=3)
@@ -44,6 +61,19 @@ def figure(d: ImageDraw.ImageDraw, x: float, y: float, color, swing: float = 0.0
 
 
 def draw_frame(scene: str, i: int) -> Image.Image:
+    """Render frame *i* of a synthetic scene.
+
+    ``demo_incident``: approach (<50), jittery scuffle (50-89), part (>=90).
+    Any other scene name is drawn as the calm walk-past. Jitter uses a
+    per-frame seeded RNG so output is deterministic.
+
+    Args:
+        scene: ``"demo_incident"`` or ``"demo_calm"``.
+        i: Frame index.
+
+    Returns:
+        A W x H RGB image.
+    """
     img = Image.new("RGB", (W, H), (96, 120, 92))
     d = ImageDraw.Draw(img)
     d.rectangle([0, 80, W, 150], fill=(120, 120, 126))
@@ -71,11 +101,26 @@ def draw_frame(scene: str, i: int) -> Image.Image:
 
 
 def bump(center: float, width: float, height: float) -> np.ndarray:
+    """Return a Gaussian bump of length N (peak *height* at *center*, std *width*)."""
     x = np.arange(N)
     return height * np.exp(-((x - center) ** 2) / (2 * width**2))
 
 
 def make_scene(scene: str) -> list[Image.Image]:
+    """Write frames, synthetic score CSVs and a transcript for one scene.
+
+    The incident scene gets Gaussian bumps in the visual (peak ~frame 70),
+    audio (~72) and verbal (~76) signals plus noise from a fixed-seed RNG;
+    the calm scene gets only a small, wide visual bump. Audio/verbal z-scores
+    go through the real ``fuse.zscore``; the visual column is left raw, as in
+    the default fuse behaviour.
+
+    Args:
+        scene: ``"demo_incident"`` or ``"demo_calm"``.
+
+    Returns:
+        The rendered PIL frames (used to build the GIF).
+    """
     rng = np.random.default_rng(7 if scene == "demo_incident" else 11)
     fdir = SPLIT_DIR / scene
     fdir.mkdir(parents=True, exist_ok=True)
@@ -96,7 +141,7 @@ def make_scene(scene: str) -> list[Image.Image]:
     df["visual_z"] = df["smoothed_score"]
     df["audio_z"] = zscore(df["audio_score"].values)
     df["verbal_z"] = zscore(df["verbal_score"].values) if incident else 0.0
-    df["fused_score"] = np.maximum.reduce([df["visual_z"], df["audio_z"], df["verbal_z"]])
+    df["fused_score"] = np.maximum(np.maximum(df["visual_z"], df["audio_z"]), df["verbal_z"])
     out = SCORES / "fused"
     out.mkdir(parents=True, exist_ok=True)
     df.round(5).to_csv(out / f"{scene}_fused.csv", index=False)
@@ -113,6 +158,14 @@ def make_scene(scene: str) -> list[Image.Image]:
 
 
 def make_gif(frames: list[Image.Image]) -> None:
+    """Write assets/demo.gif: frames beside a growing fused-score plot.
+
+    Uses every second frame, clips the plotted score to [0, 2], and marks
+    "ALERT" when the fused score reaches the 1.0 threshold.
+
+    Args:
+        frames: Frames of the incident scene from ``make_scene``.
+    """
     fused = pd.read_csv(SCORES / "fused" / "demo_incident_fused.csv")["fused_score"].values
     out = []
     for i in range(0, N, 2):

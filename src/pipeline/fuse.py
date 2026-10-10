@@ -1,5 +1,4 @@
-"""
-Step 6 — Fuse visual and audio scores into a single per-frame CSV.
+"""Step 6 — Fuse visual and audio scores into a single per-frame CSV.
 
 Reads:
   - runtime_data/scores/<split>/frames/<scene>_frames.csv   (visual, smoothed)
@@ -41,10 +40,32 @@ DATASET_SPLIT = os.getenv("DATASET_SPLIT", "testing").strip().lower()
 
 
 def zscore(x: np.ndarray) -> np.ndarray:
+    """Standardise *x* to zero mean and unit variance.
+
+    EPS in the denominator keeps a constant signal (std 0) at 0 instead of
+    producing NaN/inf. Note this means a flat but non-zero signal maps to ~0.
+
+    Args:
+        x: 1-D array of scores.
+
+    Returns:
+        Array of the same shape with z-scores.
+    """
     return (x - x.mean()) / (x.std() + EPS)
 
 
-def main():
+def main() -> None:
+    """Fuse visual, audio and (optional) verbal scores for SCENE into one CSV.
+
+    ``fused_score`` is the per-frame maximum of the three modality signals, so
+    any single modality can raise an alert. Missing audio/verbal CSVs are
+    treated as all-zero signals. Frames are outer-merged with audio so audio
+    longer than the visual track is retained (visual NaNs become 0).
+
+    Raises:
+        RuntimeError: If SCENE is unset.
+        FileNotFoundError: If the visual scores CSV is missing.
+    """
     if not SCENE:
         raise RuntimeError("SCENE environment variable is required.")
 
@@ -95,11 +116,10 @@ def main():
         merged["verbal_z"]     = 0.0
         print("No verbal CSV — fusing visual + audio only.")
 
-    merged["fused_score"] = np.maximum.reduce([
-        merged["visual_z"].values,
-        merged["audio_z"].values,
+    merged["fused_score"] = np.maximum(
+        np.maximum(merged["visual_z"].values, merged["audio_z"].values),
         merged["verbal_z"].values,
-    ])
+    )
 
     out_dir = root / "fused"
     out_dir.mkdir(parents=True, exist_ok=True)

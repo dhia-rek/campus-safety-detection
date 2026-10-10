@@ -1,1 +1,1 @@
-# Bullying Detection on ECE Campus — source package
+"""Bullying Detection on ECE Campus — source package."""

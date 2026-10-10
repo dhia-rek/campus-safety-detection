@@ -168,22 +168,37 @@ Automated campus surveillance systems carry significant ethical responsibilities
 
 A synthetic demo container can be deployed directly to Hugging Face Spaces. Refer to [`DEPLOY.md`](DEPLOY.md) for Docker configuration and space setup instructions.
 
-## Repository Layout
+## Project structure
 
-```
-campus-safety-detection/
-├── assets/             # Demo animations and documentation media
-├── demo_data/          # Synthetic test scenes and demo score CSVs
-├── deploy/huggingface/ # Hugging Face Space card (see DEPLOY.md; Dockerfile at root)
-├── prompts/            # Detection prompt lists (normal, abnormal, bad words, audio classes)
-├── scripts/            # Pipeline orchestration and batch-processing scripts
-├── src/
-│   ├── agents/         # Multi-agent perception, coordinator LLM, and action modules
-│   ├── alerts/         # Telegram and notification dispatchers
-│   ├── dashboard/      # FastAPI REST backend
-│   └── pipeline/       # YOLO detection, CLIP embeddings, PANNs, Whisper, scoring
-├── tests/              # Automated unit and integration tests
-└── web/                # React (Vite) frontend application
+```text
+src/
+  paths.py                    Dataset/runtime paths, overridable via environment variables
+  agents/
+    base.py                   Observation/Decision dataclasses and the Agent base classes
+    registry.py               Plugin registry: auto-discovers agents in plugins/
+    runtime.py                Runs one frame through perception, coordinator and actions
+    context.py                Loads scene scores into the shared context; finds the peak frame
+    coordinator.py            CLI demo that runs the full agent pipeline on one scene
+    plugins/
+      vision.py, sound.py, speech.py   Perception agents (one per modality)
+      coordinator_llm.py      Coordinator: local LLM (Ollama) with a heuristic fallback
+      action_telegram.py      Action: Telegram photo alert
+      action_email.py         Action: HTML e-mail with inline frame and clip
+      action_whatsapp.py      Action: WhatsApp message via CallMeBot
+      action_webhook.py       Action: generic webhook POST
+  alerts/
+    notifier.py               Telegram sender (real or mock in demo mode)
+    telegram_listener.py      Bot long-poll loop managing subscribers
+  dashboard/api.py            FastAPI backend for the web UI
+  pipeline/                   Offline ML pipeline, one module per step
+    extract_frames.py, detect.py, crop.py, clip_model.py, embed.py, text_features.py,
+    score.py, audio_score.py, transcribe.py, fuse.py, evaluate.py, visualize.py, ingest_clip.py
+scripts/                      Batch runners, demo-data generator, ingestion helpers
+prompts/                      Prompt lists (normal, abnormal, bad words, audio classes)
+demo_data/                    Synthetic scenes and score CSVs for demo mode
+web/                          React (Vite) dashboard
+tests/                        pytest suite
+deploy/, automation/          Hugging Face Space card, n8n example
 ```
 
 ## Tech Stack
@@ -193,14 +208,15 @@ campus-safety-detection/
 - **Frontend**: React, Vite, Lucide Icons
 - **Local Reasoning**: Ollama (Llama 3.1 8B)
 
-## Testing & Quality
-
-Run the test suite and code quality checks using `uv`:
+## Development
 
 ```bash
-# Run tests
-uv run pytest
-
-# Run linter
-uv run ruff check .
+uv sync                  # core + dev dependencies (add --extra ml for the full pipeline)
+uv run pytest -q         # tests
+uv run ruff check .      # lint, including Google-style docstring rules
+uv run mypy              # type check (basic mode)
+uv run interrogate       # docstring coverage, fails under 90%
+cd web && npm install && npm run build   # frontend
 ```
+
+CI runs lint, type check, docstring coverage and tests on every pull request.

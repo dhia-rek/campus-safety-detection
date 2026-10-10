@@ -1,5 +1,4 @@
-"""
-Step 1 — Run YOLOv8 object detection on every frame.
+"""Step 1 — Run YOLOv8 object detection on every frame.
 
 For each input frame, writes a JSON sidecar file containing the list of
 detected bounding boxes (label, confidence, xyxy coords).  Empty frames
@@ -49,11 +48,25 @@ DETS_OUT_ROOT  = str(DETECTIONS_ROOT / DATASET_SPLIT)
 
 
 def is_image(name: str) -> bool:
+    """Return True if *name* has a common image file extension (case-insensitive)."""
     return os.path.splitext(name)[1].lower() in {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 
 
 def detect_frame(model: YOLO, frame_path: str) -> list[dict]:
-    """Run YOLO on a single frame and return a list of detection dicts."""
+    """Run YOLO on a single frame and return a list of detection dicts.
+
+    Only classes in KEEP_LABELS are returned (unless KEEP_ALL), since only
+    people and vehicles are relevant to the downstream bullying classifier.
+    CONF_THRES is low (0.15), favouring recall over precision.
+
+    Args:
+        model: Loaded ultralytics YOLO model.
+        frame_path: Path to the image file.
+
+    Returns:
+        List of ``{"label", "conf", "bbox": [x1, y1, x2, y2]}`` dicts (integer
+        pixel coords); empty if the image cannot be read or nothing is kept.
+    """
     img = cv2.imread(frame_path)
     if img is None:
         return []
@@ -78,6 +91,13 @@ def detect_frame(model: YOLO, frame_path: str) -> list[dict]:
 
 
 def main() -> None:
+    """Run detection over every frame of the split and write JSON sidecars.
+
+    A sidecar is written for every frame, including empty ``[]`` ones.
+
+    Raises:
+        FileNotFoundError: If FRAMES_ROOT does not exist.
+    """
     print(f"Split:              {DATASET_SPLIT}")
     print(f"Frames root:        {FRAMES_ROOT}")
     print(f"Detections output:  {DETS_OUT_ROOT}")

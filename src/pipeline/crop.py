@@ -1,5 +1,4 @@
-"""
-Step 2 — Crop detected objects out of every frame.
+"""Step 2 — Crop detected objects out of every frame.
 
 Reads the YOLO JSON sidecars produced by detect.py, pads each bounding
 box by PADDING_RATIO, and saves a 224×224 JPEG crop.  Also writes an
@@ -39,15 +38,33 @@ CROPS_OUT_ROOT = str(CROPS_ROOT / DATASET_SPLIT)
 
 
 def is_image(name: str) -> bool:
+    """Return True if *name* has a common image file extension (case-insensitive)."""
     return os.path.splitext(name)[1].lower() in {".jpg", ".jpeg", ".png", ".bmp", ".tif", ".tiff"}
 
 
 def clamp(v: float, lo: int, hi: int) -> int:
+    """Truncate *v* to an int and clamp it to the inclusive range [lo, hi]."""
     return max(lo, min(int(v), hi))
 
 
 def pad_box(x1: int, y1: int, x2: int, y2: int, w: int, h: int) -> tuple[int, int, int, int]:
-    """Expand a bounding box by PADDING_RATIO and clamp to image bounds."""
+    """Expand a bounding box by PADDING_RATIO and clamp to image bounds.
+
+    Padding keeps a little surrounding context (e.g. a raised arm just outside
+    the box) which helps the CLIP classifier. Padding per side is
+    ``floor(size * PADDING_RATIO)`` pixels.
+
+    Args:
+        x1: Left edge of the box.
+        y1: Top edge of the box.
+        x2: Right edge of the box.
+        y2: Bottom edge of the box.
+        w: Image width in pixels.
+        h: Image height in pixels.
+
+    Returns:
+        Padded ``(x1, y1, x2, y2)`` clamped to ``[0, w-1] x [0, h-1]``.
+    """
     bw, bh = x2 - x1, y2 - y1
     px, py  = int(math.floor(bw * PADDING_RATIO)), int(math.floor(bh * PADDING_RATIO))
     return (
@@ -61,9 +78,21 @@ def pad_box(x1: int, y1: int, x2: int, y2: int, w: int, h: int) -> tuple[int, in
 def crop_frame(img: np.ndarray, dets: list[dict], out_dir: str, stem: str) -> list[dict]:
     """Crop every detection in *dets* from *img* and save to *out_dir*.
 
-    Returns a list of metadata rows for the index CSV.
-    """
+    Detections are skipped silently if the padded box is empty, smaller than
+    MIN_BOX_WH on either side, or cannot be resized. Crops are resized to
+    OUTPUT_SIZE x OUTPUT_SIZE (no aspect-ratio preservation) to match the CLIP
+    input size.
 
+    Args:
+        img: BGR frame as loaded by OpenCV, shape ``(H, W, 3)``.
+        dets: Detection dicts with ``bbox`` (xyxy), ``label`` and ``conf``.
+        out_dir: Directory where ``<stem>_<obj_id>.jpg`` crops are written.
+        stem: Frame filename without extension; used in crop names. The score
+            step later parses the frame index from the part before the first ``_``.
+
+    Returns:
+        One metadata dict per saved crop (frame_file, crop_path, label, conf, bbox).
+    """
     h, w = img.shape[:2]
     rows = []
 
@@ -100,6 +129,15 @@ def crop_frame(img: np.ndarray, dets: list[dict], out_dir: str, stem: str) -> li
 
 
 def main() -> None:
+    """Crop all detections for the selected split and write the index CSV.
+
+    Walks FRAMES_ROOT, pairs each frame with its JSON sidecar from DETS_ROOT,
+    and saves crops under CROPS_OUT_ROOT. Unreadable frames and unparsable
+    JSON are skipped silently (treated as no detections).
+
+    Raises:
+        FileNotFoundError: If the frames or detections root is missing.
+    """
     print(f"Frames root:     {FRAMES_ROOT}")
     print(f"Detections root: {DETS_ROOT}")
     print(f"Crops out root:  {CROPS_OUT_ROOT}")

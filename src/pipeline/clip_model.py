@@ -9,12 +9,24 @@ Checked: text embeddings match openai-clip to cosine 1.0000 on prompts/*.txt.
 
 from __future__ import annotations
 
+from typing import Any
+
 MODEL_NAME = "ViT-B-32-quickgelu"
 PRETRAINED = "openai"
 
 
-def load_clip(device: str = "cpu"):
-    """Return (model, preprocess, tokenizer), model in eval mode on *device*."""
+def load_clip(device: str = "cpu") -> tuple[Any, Any, Any]:
+    """Load CLIP ViT-B/32 (OpenAI weights) via open_clip.
+
+    open_clip is imported lazily so importing this module stays cheap.
+
+    Args:
+        device: Torch device string, e.g. ``"cpu"`` or ``"cuda"``.
+
+    Returns:
+        Tuple ``(model, preprocess, tokenizer)``; the model is in eval mode on
+        ``device``.
+    """
     import open_clip
 
     model, _, preprocess = open_clip.create_model_and_transforms(MODEL_NAME, pretrained=PRETRAINED, device=device)

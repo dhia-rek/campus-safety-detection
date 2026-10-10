@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
-"""
-Batch pipeline runner — processes scenes one by one, deleting frames
-immediately after embedding to keep disk usage low (~2 GB peak vs 36 GB).
-Runs N_WORKERS scenes in parallel to saturate all CPU cores.
+"""Batch pipeline runner: process scenes one by one, deleting frames after embedding.
+
+This keeps disk usage low (~2 GB peak vs 36 GB). Runs N_WORKERS scenes in parallel to saturate all CPU cores.
 
 Usage
 -----
@@ -17,6 +16,7 @@ import shutil
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -27,6 +27,11 @@ PYTHON       = str(PROJECT_ROOT / ".venv" / "bin" / "python")
 
 # Resolve dataset root the same way src/paths.py does
 def _dataset_root() -> Path:
+    """Return the first existing dataset directory among the known locations.
+
+    Raises:
+        FileNotFoundError: If none of the candidates exist.
+    """
     for candidate in [
         PROJECT_ROOT / "shanghaitech",                     # in-project dataset (default)
         PROJECT_ROOT / "Videos_bullying" / "ece_campus",
@@ -51,7 +56,16 @@ def is_done(scene: str, split: str) -> bool:
     return npz.exists()
 
 
-def run(args: list[str], env: dict | None = None) -> None:
+def run(args: list[str], env: dict[str, str] | None = None) -> None:
+    """Run a subprocess from PROJECT_ROOT with extra environment variables.
+
+    Args:
+        args: Command and arguments.
+        env: Variables merged over the current environment.
+
+    Raises:
+        RuntimeError: If the command exits non-zero.
+    """
     full_env = {**os.environ, **(env or {})}
     result = subprocess.run(args, env=full_env, cwd=str(PROJECT_ROOT))
     if result.returncode != 0:
@@ -59,6 +73,10 @@ def run(args: list[str], env: dict | None = None) -> None:
 
 
 def process_training_scene(scene: str) -> None:
+    """Extract, detect, crop and embed one training scene, then delete its frames.
+
+    Frames are removed afterwards (only the embeddings are needed) to bound disk usage.
+    """
     frames_dir = TRAIN_FRAMES / scene
     base_env   = {"DATASET_SPLIT": "training", "SUBDIR_FILTER": scene}
 
@@ -72,14 +90,27 @@ def process_training_scene(scene: str) -> None:
 
 
 def process_testing_scene(scene: str) -> None:
+    """Detect, crop and embed one testing scene (frames are kept)."""
     base_env = {"DATASET_SPLIT": "testing", "SUBDIR_FILTER": scene}
     run([PYTHON, "-m", "src.pipeline.detect"], env=base_env)
     run([PYTHON, "-m", "src.pipeline.crop"],   env=base_env)
     run([PYTHON, "-m", "src.pipeline.embed"],  env=base_env)
 
 
-def run_parallel(fn, scenes: list[str], split: str) -> list[str]:
-    """Run fn(scene) for all scenes using N_WORKERS threads. Returns failed scenes."""
+def run_parallel(fn: Callable[[str], None], scenes: list[str], split: str) -> list[str]:
+    """Run fn(scene) for all scenes using N_WORKERS threads. Returns failed scenes.
+
+    Scenes whose embeddings already exist are skipped (resume-safe). Threads
+    suffice because the real work happens in subprocesses.
+
+    Args:
+        fn: Per-scene worker, e.g. ``process_testing_scene``.
+        scenes: Scene names to process.
+        split: ``"training"`` or ``"testing"``; used for the done-check.
+
+    Returns:
+        Names of scenes whose worker raised.
+    """
     already_done = [s for s in scenes if is_done(s, split)]
     pending      = [s for s in scenes if not is_done(s, split)]
     failed       = []
@@ -118,6 +149,7 @@ def run_parallel(fn, scenes: list[str], split: str) -> list[str]:
 
 
 def main() -> None:
+    """Parse flags and run the requested stages (text features, training, testing, score)."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--testing", action="store_true", help="Skip training, run testing + score")
     parser.add_argument("--score",   action="store_true", help="Run scoring only")

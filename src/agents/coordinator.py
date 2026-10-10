@@ -18,6 +18,14 @@ from src.agents.runtime import analyze_frame
 
 
 def main() -> None:
+    """Run the full agent pipeline on a scene's peak frame and print the result.
+
+    The scene comes from the first CLI argument, falling back to the ``SCENE``
+    environment variable.
+
+    Raises:
+        SystemExit: If no scene is given.
+    """
     scene = sys.argv[1] if len(sys.argv) > 1 else os.getenv("SCENE", "")
     if not scene:
         raise SystemExit("Usage: python -m src.agents.coordinator <scene>")

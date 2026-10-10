@@ -1,5 +1,4 @@
-"""
-Centralised path configuration for the Bullying Detection project.
+"""Centralised path configuration for the Bullying Detection project.
 
 All other modules import path constants from here.
 Paths can be overridden via environment variables — useful for running
@@ -24,13 +23,30 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 
 
 def _env_path(name: str, default: Path) -> Path:
-    """Return the path from environment variable *name*, or *default* if unset."""
+    """Return the path from environment variable *name*, or *default* if unset.
+
+    Args:
+        name: Environment variable to read.
+        default: Path used when the variable is unset or empty.
+
+    Returns:
+        The variable's value expanded (``~``) and resolved to an absolute path,
+        otherwise *default* unchanged (not resolved).
+    """
     value = os.getenv(name)
     return Path(value).expanduser().resolve() if value else default
 
 
 def _default_dataset_root() -> Path:
-    """Locate the ECE campus dataset folder, trying both common spellings."""
+    """Locate the ECE campus dataset folder, trying both common spellings.
+
+    The trailing-space candidate exists because the dataset folder was
+    historically shipped as ``"Videos_bullying "``.
+
+    Returns:
+        The first existing candidate, or the ``Videos_bullying/ece_campus``
+        path (even if missing) so later errors name a sensible location.
+    """
     candidates = [
         PROJECT_ROOT / "shanghaitech",                     # in-project dataset (default)
         PROJECT_ROOT / "Videos_bullying" / "ece_campus",

@@ -1,5 +1,4 @@
-"""
-The agent CONTRACT — the small, stable core every plugin agent implements.
+"""The agent CONTRACT — the small, stable core every plugin agent implements.
 
 The multi-agent layer has three roles, and nothing in the core ever names a
 concrete agent — it only depends on these abstract base classes:
@@ -35,6 +34,7 @@ class Observation:
     detail:    str = ""     # free-text context (e.g. the transcribed words)
 
     def to_dict(self) -> dict:
+        """Return the observation as a plain JSON-serialisable dict."""
         return asdict(self)
 
 
@@ -50,11 +50,21 @@ class Decision:
     source:      str = "llm"       # "llm" or "heuristic" (fallback)
 
     def to_dict(self) -> dict:
+        """Return the decision as a plain JSON-serialisable dict."""
         return asdict(self)
 
 
 # ── The base agent (shared metadata + enable/disable seam) ────────────────────
 def _env_enabled(name: str) -> bool:
+    """Return whether ``AGENT_<NAME>_ENABLED`` leaves the agent on.
+
+    Args:
+        name: Agent name (upper-cased to build the variable name).
+
+    Returns:
+        True unless the variable is set to 0/false/no/off (case-insensitive);
+        an unset variable means enabled.
+    """
     raw = os.getenv(f"AGENT_{name.upper()}_ENABLED", "1").strip().lower()
     return raw not in {"0", "false", "no", "off"}
 
@@ -91,6 +101,15 @@ class PerceptionAgent(Agent):
 
     @abstractmethod
     def observe(self, ctx: dict, frame: int) -> Observation | None:
+        """Read this agent's modality at *frame*.
+
+        Args:
+            ctx: Shared scene context (see ``src.agents.context``).
+            frame: Frame index to inspect.
+
+        Returns:
+            An Observation, or None if the agent has nothing to report.
+        """
         ...
 
 
@@ -100,6 +119,15 @@ class Coordinator(Agent):
 
     @abstractmethod
     def decide(self, observations: list[Observation], threshold: float = 1.0) -> Decision:
+        """Fuse all observations into one Decision.
+
+        Args:
+            observations: Observations from every enabled perception agent.
+            threshold: Z-score alert threshold the observations were judged against.
+
+        Returns:
+            The final Decision for the frame.
+        """
         ...
 
 
@@ -109,4 +137,14 @@ class ActionAgent(Agent):
 
     @abstractmethod
     def handle(self, decision: Decision, observations: list[Observation], ctx: dict) -> dict:
+        """React to a Decision (send an alert, call a webhook, ...).
+
+        Args:
+            decision: The coordinator's judgement.
+            observations: The observations it was based on.
+            ctx: Shared scene context (``scene``, ``frame``, ``split``...).
+
+        Returns:
+            A JSON-ready dict describing what the agent did or why it skipped.
+        """
         ...

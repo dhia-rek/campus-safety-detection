@@ -1,5 +1,4 @@
-"""
-Step 7 — Frame-level ROC-AUC evaluation against ECE campus ground-truth masks.
+"""Step 7 — Frame-level ROC-AUC evaluation against ECE campus ground-truth masks.
 
 Loads every `<scene>.npy` mask under `<dataset>/testing/test_frame_mask/`,
 aligns it with the matching scored CSV, and reports both per-scene and
@@ -41,6 +40,17 @@ DEFAULT_COL = {
 
 
 def main() -> None:
+    """Compute per-scene and pooled frame-level ROC-AUC and print a summary.
+
+    Scores are aligned to each ground-truth mask by frame index; frames missing
+    from the CSV count as 0. Scenes with no score CSV, a missing column, or
+    degenerate ground truth (all normal or all anomalous, where AUC is
+    undefined) are skipped. The pooled AUC concatenates all frames, so longer
+    scenes weigh more than in the mean per-scene AUC.
+
+    Raises:
+        FileNotFoundError: If the mask or score directory is missing.
+    """
     masks_dir  = Path(str(DATASET_ROOT)) / DATASET_SPLIT / "test_frame_mask"
     scores_dir = Path(str(SCORES_ROOT))  / DATASET_SPLIT / SCORE_KIND
     col        = SCORE_COL_ENV or DEFAULT_COL.get(SCORE_KIND, "smoothed_score")
