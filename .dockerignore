@@ -1,0 +1,9 @@
+.git
+.venv
+.agent-scratch
+.ruff_cache
+web/node_modules
+web/dist
+runtime_data
+__pycache__
+demo.gif

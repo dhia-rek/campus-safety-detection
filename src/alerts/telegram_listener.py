@@ -24,6 +24,7 @@ Usage
 # Make project root importable when run as a script
 import sys
 from pathlib import Path
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent))
 
 import json
@@ -31,7 +32,6 @@ import os
 import time
 
 import requests
-
 
 SUBSCRIBER_FILE  = "subscribers.json"   # relative to project root
 POLL_INTERVAL_SEC = 2

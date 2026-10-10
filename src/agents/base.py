@@ -59,7 +59,7 @@ def _env_enabled(name: str) -> bool:
     return raw not in {"0", "false", "no", "off"}
 
 
-class Agent(ABC):
+class Agent(ABC):  # noqa: B024  (metadata base; subclasses add the abstract method)
     """Common metadata for every agent — used by the registry and the UI grid."""
 
     name:        str = "agent"     # unique id, also the env-toggle key

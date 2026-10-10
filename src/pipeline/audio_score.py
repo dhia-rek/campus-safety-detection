@@ -26,7 +26,6 @@ import pandas as pd
 
 from src.paths import PROMPTS_DIR, SCORES_ROOT
 
-
 SAMPLE_RATE = 32000   # PANNs CNN14 expects 32 kHz mono
 WIN_SEC     = 1.0
 HOP_SEC     = 0.5
@@ -41,7 +40,7 @@ DATASET_SPLIT = os.getenv("DATASET_SPLIT", "testing").strip().lower()
 
 def load_target_class_indices(label_list):
     """Map names in violence_audio_classes.txt to PANNs label indices."""
-    wanted = [l.strip() for l in CLASS_FILE.read_text().splitlines() if l.strip()]
+    wanted = [ln.strip() for ln in CLASS_FILE.read_text().splitlines() if ln.strip()]
     name_to_idx = {name: i for i, name in enumerate(label_list)}
     matched, missing = [], []
     for w in wanted:
@@ -75,7 +74,8 @@ def main():
         raise FileNotFoundError(f"WAV not found: {WAV_PATH}")
 
     import librosa
-    from panns_inference import AudioTagging, labels as audioset_labels
+    from panns_inference import AudioTagging
+    from panns_inference import labels as audioset_labels
 
     print(f"Loading audio: {WAV_PATH}")
     audio, _ = librosa.load(WAV_PATH, sr=SAMPLE_RATE, mono=True)

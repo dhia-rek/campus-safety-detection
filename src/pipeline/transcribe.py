@@ -40,8 +40,7 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
-from src.paths import PROMPTS_DIR, SCORES_ROOT, RUNTIME_ROOT
-
+from src.paths import PROMPTS_DIR, RUNTIME_ROOT, SCORES_ROOT
 
 # ── Config ────────────────────────────────────────────────────────────────────
 SAMPLE_RATE   = 16000   # Whisper expects 16 kHz mono

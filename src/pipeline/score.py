@@ -30,7 +30,6 @@ from tqdm import tqdm
 
 from src.paths import FEATURES_ROOT, PROMPTS_DIR, SCORES_ROOT
 
-
 # ── Config ────────────────────────────────────────────────────────────────────
 SMOOTH_SIGMA = 21   # Gaussian smoothing kernel width (frames)
 EPS          = 1e-6

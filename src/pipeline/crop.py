@@ -20,10 +20,10 @@ import math
 import os
 
 import cv2
+import numpy as np
 from tqdm import tqdm
 
-from src.paths import TRAIN_FRAMES_ROOT, TEST_FRAMES_ROOT, DETECTIONS_ROOT, CROPS_ROOT
-
+from src.paths import CROPS_ROOT, DETECTIONS_ROOT, TEST_FRAMES_ROOT, TRAIN_FRAMES_ROOT
 
 # ── Settings ──────────────────────────────────────────────────────────────────
 PADDING_RATIO = 0.15   # fractional padding added around each bounding box
@@ -58,12 +58,11 @@ def pad_box(x1: int, y1: int, x2: int, y2: int, w: int, h: int) -> tuple[int, in
     )
 
 
-def crop_frame(img: "np.ndarray", dets: list[dict], out_dir: str, stem: str) -> list[dict]:
+def crop_frame(img: np.ndarray, dets: list[dict], out_dir: str, stem: str) -> list[dict]:
     """Crop every detection in *dets* from *img* and save to *out_dir*.
 
     Returns a list of metadata rows for the index CSV.
     """
-    import numpy as np  # lazy import — only needed here
 
     h, w = img.shape[:2]
     rows = []

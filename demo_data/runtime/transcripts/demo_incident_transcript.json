@@ -1,0 +1,12 @@
+{
+  "segments": [
+    {
+      "start": 3.0,
+      "end": 3.6,
+      "text": "stop it, you idiot",
+      "bad_words": [
+        "idiot"
+      ]
+    }
+  ]
+}

@@ -35,7 +35,6 @@ import pandas as pd
 
 from src.paths import SCORES_ROOT
 
-
 EPS = 1e-6
 SCENE         = os.getenv("SCENE", "").strip()
 DATASET_SPLIT = os.getenv("DATASET_SPLIT", "testing").strip().lower()

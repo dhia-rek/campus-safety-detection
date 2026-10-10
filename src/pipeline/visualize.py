@@ -22,8 +22,7 @@ import cv2
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from src.paths import TEST_FRAMES_ROOT, SCORES_ROOT
-
+from src.paths import SCORES_ROOT, TEST_FRAMES_ROOT
 
 # ── Config ────────────────────────────────────────────────────────────────────
 SCENE       = os.getenv("SCENE", "05_0019")
@@ -37,7 +36,7 @@ GRAPH_WINDOW = 200  # number of frames shown in the rolling graph
 
 def main() -> None:
     df = pd.read_csv(SCORE_CSV)
-    frame_to_score = dict(zip(df["frame"], df["smoothed_score"]))
+    frame_to_score = dict(zip(df["frame"], df["smoothed_score"], strict=True))
 
     frame_paths = sorted(FRAME_DIR.glob("*.jpg"))
     if not frame_paths:
