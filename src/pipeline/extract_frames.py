@@ -22,7 +22,6 @@ from tqdm import tqdm
 
 from src.paths import DATASET_ROOT
 
-
 VIDEOS_DIR  = DATASET_ROOT / "training" / "videos"
 FRAMES_DIR  = DATASET_ROOT / "training" / "frames"
 IMAGE_EXT   = ".jpg"

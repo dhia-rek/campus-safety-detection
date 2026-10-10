@@ -1,10 +1,14 @@
 """Scan RLVS violence clips and rank by REAL violence-sound (PANNs) + loudness,
 so we can pick clips whose own audio is loud/clear (screams, impacts, shouting)."""
-import glob, os
-import numpy as np
+import glob
+import os
+
 import librosa
-from panns_inference import AudioTagging, labels as audioset_labels
-from src.pipeline.audio_score import slice_windows, load_target_class_indices, SAMPLE_RATE
+import numpy as np
+from panns_inference import AudioTagging
+from panns_inference import labels as audioset_labels
+
+from src.pipeline.audio_score import SAMPLE_RATE, load_target_class_indices, slice_windows
 
 V = "/Users/majd/Downloads/archive/Real Life Violence Dataset/Violence"
 files = sorted(glob.glob(os.path.join(V, "*.mp4")),

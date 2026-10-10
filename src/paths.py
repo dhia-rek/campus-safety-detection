@@ -16,9 +16,8 @@ SCORES_ROOT       : override for bullying score CSVs
 PROMPTS_DIR       : override for normal/abnormal prompt text files
 """
 
-from pathlib import Path
 import os
-
+from pathlib import Path
 
 # Project root is two levels above this file: src/paths.py → src/ → project root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -43,14 +42,20 @@ def _default_dataset_root() -> Path:
     return candidates[1]
 
 
+# ── Demo mode ─────────────────────────────────────────────────────────────────
+# DEMO_MODE=1 points everything at the synthetic sample data in demo_data/, so the
+# dashboard API, agents and alerts run with no dataset, camera, GPU or Telegram token.
+DEMO_MODE = os.getenv("DEMO_MODE", "").strip().lower() in {"1", "true", "yes", "on"}
+DEMO_ROOT = PROJECT_ROOT / "demo_data"
+
 # ── Dataset ───────────────────────────────────────────────────────────────────
-DATASET_ROOT = _env_path("ECE_DATASET_ROOT", _default_dataset_root())
+DATASET_ROOT = _env_path("ECE_DATASET_ROOT", DEMO_ROOT / "dataset" if DEMO_MODE else _default_dataset_root())
 
 TRAIN_FRAMES_ROOT = DATASET_ROOT / "training" / "frames"
 TEST_FRAMES_ROOT  = DATASET_ROOT / "testing"  / "frames"
 
 # ── Runtime outputs (all generated, safe to delete and re-run) ────────────────
-RUNTIME_ROOT = _env_path("PROJECT_DATA_ROOT", PROJECT_ROOT / "runtime_data")
+RUNTIME_ROOT = _env_path("PROJECT_DATA_ROOT", DEMO_ROOT / "runtime" if DEMO_MODE else PROJECT_ROOT / "runtime_data")
 
 DETECTIONS_ROOT = _env_path("DETECTIONS_ROOT", RUNTIME_ROOT / "detections")
 CROPS_ROOT      = _env_path("CROPS_ROOT",      RUNTIME_ROOT / "crops")

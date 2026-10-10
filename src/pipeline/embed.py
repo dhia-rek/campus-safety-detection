@@ -6,8 +6,8 @@ under features/<split>/ containing:
   - feats : float32 array (N_crops, 512) of L2-normalised image embeddings
   - paths : string array of the absolute paths to the source crop images
 
-Also calls text_features.py logic once to ensure prompts/text_features.npz
-exists before the scoring step.
+Also writes prompts/text_features.npz (via text_features.py) if it is missing,
+so the scoring step has its text embeddings.
 
 Environment variables
 ---------------------
@@ -26,11 +26,9 @@ import torch
 from PIL import Image
 from tqdm import tqdm
 
-from src.paths import CROPS_ROOT, PROMPTS_DIR, FEATURES_ROOT
-
+from src.paths import CROPS_ROOT, FEATURES_ROOT, PROMPTS_DIR
 
 # ── Config ────────────────────────────────────────────────────────────────────
-MODEL_NAME    = "ViT-B/32"
 BATCH_SIZE    = 128
 IMG_EXTS      = {".jpg", ".jpeg", ".png"}
 SPLIT         = os.getenv("DATASET_SPLIT", "training").strip().lower()
@@ -40,36 +38,14 @@ SUBDIR_FILTER = os.getenv("SUBDIR_FILTER", "").strip()
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 
 
-def _read_lines(path: str) -> list[str]:
-    with open(path, encoding="utf-8") as f:
-        return [line.strip() for line in f if line.strip()]
-
-
-def embed_texts_once(model, device: str) -> None:
+def embed_texts_once(model, tokenizer, device: str) -> None:
     """Write prompts/text_features.npz if it does not already exist."""
-    out_npz = str(PROMPTS_DIR / "text_features.npz")
-    if os.path.isfile(out_npz):
+    if (PROMPTS_DIR / "text_features.npz").is_file():
         print("text_features.npz already exists — skipping.")
         return
+    from src.pipeline.text_features import save_text_features
 
-    import clip
-
-    print("Encoding text prompts…")
-    normals   = _read_lines(str(PROMPTS_DIR / "normal.txt"))
-    abnormals = _read_lines(str(PROMPTS_DIR / "abnormal.txt"))
-    texts     = normals + abnormals
-
-    with torch.no_grad():
-        feats_list = []
-        toks = clip.tokenize(texts, truncate=True).to(device)
-        for i in range(0, len(texts), BATCH_SIZE):
-            f = model.encode_text(toks[i : i + BATCH_SIZE])
-            f = f / f.norm(dim=-1, keepdim=True)
-            feats_list.append(f.float().cpu().numpy())
-
-    feats = np.concatenate(feats_list, axis=0)
-    np.savez(out_npz, feats=feats, n_normal=len(normals), n_abnormal=len(abnormals), model=MODEL_NAME)
-    print(f"Saved: {out_npz}")
+    save_text_features(model, tokenizer, device)
 
 
 def iter_image_folders(split_root: str):
@@ -136,13 +112,13 @@ def embed_split(model, preprocess, device: str) -> None:
 
 
 def main() -> None:
-    import clip
+    from src.pipeline.clip_model import load_clip
 
     print(f"Device: {DEVICE}")
     os.makedirs(str(FEATURES_ROOT), exist_ok=True)
 
-    model, preprocess = clip.load(MODEL_NAME, device=DEVICE)
-    embed_texts_once(model, DEVICE)
+    model, preprocess, tokenizer = load_clip(DEVICE)
+    embed_texts_once(model, tokenizer, DEVICE)
     embed_split(model, preprocess, DEVICE)
 
 

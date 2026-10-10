@@ -7,38 +7,26 @@ manual "alert" button (src/dashboard/api.py) can reuse the exact same path.
 
 Environment
 -----------
-TELEGRAM_TOKEN      : Telegram Bot API token (required to send)
+TELEGRAM_TOKEN      : Telegram Bot API token (required to send; DEMO_MODE=1 uses a mock instead)
 ESCALATE_SEVERITIES : severities that trigger an automatic push (default "high")
 """
 
 from __future__ import annotations
 
-import json
 import os
 import time
 
-import requests
-
 from src.agents.base import ActionAgent, Decision, Observation
 from src.agents.registry import register
+from src.alerts.notifier import get_notifier
 from src.paths import TEST_FRAMES_ROOT
 
-TELEGRAM_TOKEN      = os.getenv("TELEGRAM_TOKEN", "")
-SUBSCRIBER_FILE     = "subscribers.json"   # relative to project root (CWD)
 ALERT_COOLDOWN_SEC  = 10
 ESCALATE_SEVERITIES = {
     s.strip() for s in os.getenv("ESCALATE_SEVERITIES", "high").split(",") if s.strip()
 }
 
 _last_alert_ts = 0.0
-
-
-def _subscribers() -> list:
-    try:
-        with open(SUBSCRIBER_FILE) as f:
-            return json.load(f).get("subscribers", [])
-    except Exception:
-        return []
 
 
 def _frame_path(scene: str, idx: int, split: str = "testing") -> str | None:
@@ -50,31 +38,13 @@ def _frame_path(scene: str, idx: int, split: str = "testing") -> str | None:
 
 def send_frame_photo(scene: str, frame: int, caption: str, split: str = "testing") -> dict:
     """Push one frame image to every subscriber. Shared with the manual UI button."""
-    token = os.getenv("TELEGRAM_TOKEN", TELEGRAM_TOKEN)
-    if not token:
+    notifier = get_notifier()
+    if not notifier.configured:
         return {"sent": 0, "skipped": "no TELEGRAM_TOKEN"}
     path = _frame_path(scene, frame, split)
     if path is None:
         return {"sent": 0, "skipped": "frame out of range"}
-    subs = _subscribers()
-    if not subs:
-        return {"sent": 0, "skipped": "no subscribers"}
-
-    url = f"https://api.telegram.org/bot{token}/sendPhoto"
-    sent = 0
-    for chat_id in subs:
-        try:
-            with open(path, "rb") as img:
-                requests.post(
-                    url,
-                    data={"chat_id": chat_id, "caption": caption},
-                    files={"photo": img},
-                    timeout=15,
-                )
-            sent += 1
-        except Exception as exc:
-            print(f"[telegram] error for {chat_id}: {exc}")
-    return {"sent": sent}
+    return notifier.send_photo(path, caption)
 
 
 @register

@@ -46,3 +46,8 @@ shanghaitech/
 
 # Presentation / docs (kept local, not pushed)
 docs/
+
+# Local tooling
+.agent-scratch/
+.ruff_cache/
+.pytest_cache/

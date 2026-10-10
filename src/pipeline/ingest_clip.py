@@ -41,8 +41,7 @@ from pathlib import Path
 
 import cv2
 
-from src.paths import TRAIN_FRAMES_ROOT, TEST_FRAMES_ROOT, RUNTIME_ROOT
-
+from src.paths import RUNTIME_ROOT, TEST_FRAMES_ROOT, TRAIN_FRAMES_ROOT
 
 VIDEO_PATH    = os.getenv("VIDEO_PATH", "").strip()
 SCENE         = os.getenv("SCENE", "").strip()
@@ -112,9 +111,9 @@ def main() -> None:
     sub = f"DATASET_SPLIT={DATASET_SPLIT} SUBDIR_FILTER={SCENE}"
     print(f"  {sub} python -m src.pipeline.detect")
     print(f"  {sub} python -m src.pipeline.crop")
-    print(f"  python -m src.pipeline.text_features")
+    print("  python -m src.pipeline.text_features")
     print(f"  {sub} python -m src.pipeline.embed")
-    print(f"  python -m src.pipeline.score")
+    print("  python -m src.pipeline.score")
     if has_audio:
         print(f"  WAV_PATH={wav_path} SCENE={SCENE} FPS={fps} python -m src.pipeline.audio_score")
         print(f"  WAV_PATH={wav_path} SCENE={SCENE} FPS={fps} python -m src.pipeline.transcribe")

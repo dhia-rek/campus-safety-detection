@@ -29,7 +29,6 @@ from sklearn.metrics import roc_auc_score
 
 from src.paths import DATASET_ROOT, SCORES_ROOT
 
-
 DATASET_SPLIT = os.getenv("DATASET_SPLIT", "testing").strip().lower()
 SCORE_KIND    = os.getenv("SCORE_KIND",    "frames").strip().lower()
 SCORE_COL_ENV = os.getenv("SCORE_COL",     "").strip()

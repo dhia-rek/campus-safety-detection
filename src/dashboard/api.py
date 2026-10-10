@@ -16,6 +16,7 @@ POST /api/alert                        → push a Telegram photo alert
 Environment variables
 ---------------------
 TELEGRAM_TOKEN : Telegram Bot API token (required for alerts)
+DEMO_MODE      : 1 = serve synthetic demo_data/ and mock the Telegram notifier
 
 Run
 ---
@@ -24,24 +25,20 @@ Run
 """
 
 import json
-import os
 import time
 from functools import lru_cache
 from pathlib import Path
 
 import pandas as pd
-import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
 
-from src.paths import TEST_FRAMES_ROOT, SCORES_ROOT, RUNTIME_ROOT
-
+from src.alerts.notifier import get_notifier
+from src.paths import RUNTIME_ROOT, SCORES_ROOT, TEST_FRAMES_ROOT
 
 # ── Config ────────────────────────────────────────────────────────────────────
-TELEGRAM_TOKEN     = os.getenv("TELEGRAM_TOKEN", "")
-SUBSCRIBER_FILE    = "subscribers.json"   # relative to project root (CWD)
 ALERT_COOLDOWN_SEC = 10
 SPLIT              = "testing"
 
@@ -59,7 +56,7 @@ app = FastAPI(title="Campus Safety Detection API")
 # Vite dev server runs on 5173; allow it (and any localhost) to call the API.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -176,12 +173,10 @@ def frame_detections(scene: str, idx: int) -> dict:
 @app.get("/api/transcript/{scene}")
 def scene_transcript(scene: str) -> dict:
     """Whisper transcript segments for a scene (empty if not transcribed)."""
-    from src.paths import RUNTIME_ROOT
     path = Path(str(RUNTIME_ROOT)) / "transcripts" / f"{scene}_transcript.json"
     if not path.is_file():
         return {"scene": scene, "segments": []}
-    import json as _json
-    data = _json.loads(path.read_text(encoding="utf-8"))
+    data = json.loads(path.read_text(encoding="utf-8"))
     return {"scene": scene, "segments": data.get("segments", [])}
 
 
@@ -216,7 +211,7 @@ def coordinator_decision(scene: str, frame: int | None = None, threshold: float 
     try:
         ctx = load_scene_context(scene, SPLIT, threshold)
     except FileNotFoundError as exc:
-        raise HTTPException(404, str(exc))
+        raise HTTPException(404, str(exc)) from exc
 
     f = peak_frame(ctx) if frame is None else frame
     return analyze_frame(ctx, f)
@@ -224,12 +219,8 @@ def coordinator_decision(scene: str, frame: int | None = None, threshold: float 
 
 @app.get("/api/telegram/status")
 def telegram_status() -> dict:
-    try:
-        with open(SUBSCRIBER_FILE) as f:
-            n = len(json.load(f).get("subscribers", []))
-    except Exception:
-        n = 0
-    return {"token_set": bool(TELEGRAM_TOKEN), "subscribers": n}
+    notifier = get_notifier()
+    return {"token_set": notifier.configured, "subscribers": len(notifier.subscribers()), "mock": notifier.mock}
 
 
 class AlertRequest(BaseModel):
@@ -247,7 +238,7 @@ def send_alert(req: AlertRequest) -> dict:
     alert routes are identical."""
     global _last_alert_ts
 
-    if not TELEGRAM_TOKEN:
+    if not get_notifier().configured:
         raise HTTPException(400, "TELEGRAM_TOKEN not set")
 
     now = time.time()
@@ -268,3 +259,11 @@ def send_alert(req: AlertRequest) -> dict:
     if result.get("sent"):
         _last_alert_ts = now
     return result
+
+
+# Serve the built React dashboard (web/dist) when present, e.g. in the Docker / Hugging Face image.
+_WEB_DIST = Path(__file__).resolve().parent.parent.parent / "web" / "dist"
+if _WEB_DIST.is_dir():
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/", StaticFiles(directory=_WEB_DIST, html=True), name="web")

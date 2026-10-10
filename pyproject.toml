@@ -1,0 +1,71 @@
+[project]
+name = "campus-safety-detection"
+version = "1.1.0"
+description = "Zero-shot detection of fights and bullying in campus CCTV with CLIP + YOLO, fused with sound (PANNs) and speech (Whisper), plus Telegram alerts"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+# Core: the FastAPI dashboard backend, the agent layer and the demo mode.
+# No torch, so the API, tests, CI and the Hugging Face Space stay small.
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "numpy>=1.26",
+    "pandas>=2.2",
+    "requests>=2.32",
+    "python-dotenv>=1.0.1",
+]
+
+[project.optional-dependencies]
+# The full pipeline: detection, embedding, audio and speech models.
+# Note: ultralytics (YOLOv8) is AGPL-3.0. See README "Licenses".
+ml = [
+    "torch>=2.3",
+    "torchvision>=0.18",
+    "ultralytics>=8.3",
+    "open-clip-torch>=2.26",
+    "panns-inference>=0.1.1",
+    "librosa>=0.10",
+    "openai-whisper>=20240930",
+    "opencv-python-headless>=4.10",
+    "scipy>=1.13",
+    "scikit-learn>=1.5",
+    "matplotlib>=3.9",
+    "pillow>=10.4",
+    "tqdm>=4.66",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "httpx>=0.27",
+    "ruff>=0.6",
+]
+
+# Not an installable package: modules are imported from the repo root (src.*).
+[tool.uv]
+package = false
+
+# CPU-only torch on Linux (CI, Docker, Hugging Face Spaces): ~200 MB instead of ~2 GB of CUDA wheels.
+[[tool.uv.index]]
+name = "pytorch-cpu"
+url = "https://download.pytorch.org/whl/cpu"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+torchvision = [{ index = "pytorch-cpu", marker = "sys_platform == 'linux'" }]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py310"
+extend-exclude = [".venv*", "web"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B"]
+# Long lines are prompt text and UI copy; leave them readable.
+ignore = ["E501"]

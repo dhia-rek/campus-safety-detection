@@ -33,8 +33,7 @@ import cv2
 from tqdm import tqdm
 from ultralytics import YOLO
 
-from src.paths import TRAIN_FRAMES_ROOT, TEST_FRAMES_ROOT, DETECTIONS_ROOT
-
+from src.paths import DETECTIONS_ROOT, TEST_FRAMES_ROOT, TRAIN_FRAMES_ROOT
 
 # ── Tunable settings ──────────────────────────────────────────────────────────
 MODEL_WEIGHTS = "yolov8m.pt"   # swap to yolov8n.pt for speed, yolov8l.pt for accuracy
@@ -67,7 +66,7 @@ def detect_frame(model: YOLO, frame_path: str) -> list[dict]:
         boxes   = r.boxes.xyxy.cpu().numpy()
         classes = r.boxes.cls.cpu().numpy()
         confs   = r.boxes.conf.cpu().numpy()
-        for (x1, y1, x2, y2), cls, cf in zip(boxes, classes, confs):
+        for (x1, y1, x2, y2), cls, cf in zip(boxes, classes, confs, strict=True):
             label = model.names[int(cls)]
             if KEEP_ALL or label in KEEP_LABELS:
                 dets.append({
